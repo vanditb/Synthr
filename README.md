@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="images/synthrlogo.png" width="300">
+</p>
+
 # Synthr
 
 **Synthr** is an AI-powered website builder that generates complete websites from structured business information. Instead of manually designing pages, users can describe their business, choose a style and tone, and instantly generate a fully structured HTML website.
