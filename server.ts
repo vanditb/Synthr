@@ -1,0 +1,729 @@
+// server.ts
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
+import Groq from "groq-sdk";
+
+dotenv.config();
+
+console.log("⚡ Starting server");
+
+const app = express();
+app.use(cors());
+// Allow larger payloads for base64 images in the request body.
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+
+type ImageAsset = {
+  role: 'hero' | 'interior' | 'food' | 'dish' | 'dessert' | 'bar' | 'logo';
+  url: string;
+  alt: string;
+};
+
+const defaultStockImages: ImageAsset[] = [
+  {
+    role: 'hero',
+    url: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1600&q=80',
+    alt: 'Elegant restaurant dining room'
+  },
+  {
+    role: 'interior',
+    url: 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?auto=format&fit=crop&w=1600&q=80',
+    alt: 'Warm, inviting restaurant interior'
+  },
+  {
+    role: 'food',
+    url: 'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&w=1600&q=80',
+    alt: 'Plated signature entree'
+  },
+  {
+    role: 'dish',
+    url: 'https://images.unsplash.com/photo-1476224203421-9ac39bcb3327?auto=format&fit=crop&w=1600&q=80',
+    alt: 'Chef-prepared seasonal dish'
+  },
+  {
+    role: 'dessert',
+    url: 'https://images.unsplash.com/photo-1481391032119-d89fee407e44?auto=format&fit=crop&w=1600&q=80',
+    alt: 'Dessert with fresh berries'
+  },
+  {
+    role: 'bar',
+    url: 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=1600&q=80',
+    alt: 'Cocktails at the bar'
+  }
+];
+
+const buildImageAssets = (images: { type: 'interior' | 'food' | 'logo'; data: string }[] | undefined, useStockImages: boolean): ImageAsset[] => {
+  const assets: ImageAsset[] = [];
+
+  if (images && images.length > 0) {
+    for (const img of images) {
+      if (!img?.data) continue;
+      if (img.type === 'logo') {
+        assets.push({ role: 'logo', url: img.data, alt: 'Restaurant logo' });
+      }
+      if (img.type === 'interior') {
+        assets.push({ role: 'interior', url: img.data, alt: 'Restaurant interior' });
+      }
+      if (img.type === 'food') {
+        assets.push({ role: 'food', url: img.data, alt: 'Signature dish' });
+      }
+    }
+  }
+
+  if (useStockImages) {
+    for (const stock of defaultStockImages) {
+      if (!assets.some((a) => a.role === stock.role)) {
+        assets.push(stock);
+      }
+    }
+  }
+
+  return assets;
+};
+
+const ensureTailwindCdn = (html: string): string => {
+  if (/cdn\\.tailwindcss\\.com/i.test(html)) return html;
+  const cdnTag = '<script src=\"https://cdn.tailwindcss.com\"></script>';
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/<head[^>]*>/i, (match) => `${match}\n  ${cdnTag}`);
+  }
+  return html.replace(/<html[^>]*>/i, (match) => `${match}\n<head>\n  ${cdnTag}\n</head>`);
+};
+
+const ensureDesignSafetyStyles = (html: string, style?: string): string => {
+  if (/<style[^>]*data-synthr-safety/i.test(html)) return html;
+
+  const styleKey = (style || '').toLowerCase();
+  let fontLink = 'https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800&display=swap';
+  let bodyFont = "'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif";
+  let headingFont = "'Playfair Display', 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif";
+
+  if (styleKey.includes('modern')) {
+    fontLink = 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Sora:wght@300;400;500;600;700&display=swap';
+    bodyFont = "'Sora', system-ui, -apple-system, 'Segoe UI', sans-serif";
+    headingFont = "'Space Grotesk', 'Sora', system-ui, -apple-system, 'Segoe UI', sans-serif";
+  } else if (styleKey.includes('casual')) {
+    fontLink = 'https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Nunito:wght@300;400;600;700&display=swap';
+    bodyFont = "'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif";
+    headingFont = "'Poppins', 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif";
+  } else if (styleKey.includes('luxury')) {
+    fontLink = 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Manrope:wght@300;400;500;600;700&display=swap';
+    bodyFont = "'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif";
+    headingFont = "'Cormorant Garamond', 'Manrope', serif";
+  }
+
+  const fontTags = `
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="${fontLink}" rel="stylesheet">`;
+
+  const viewportTag = /<meta[^>]+name=["']viewport["']/i.test(html)
+    ? ''
+    : '\n  <meta name="viewport" content="width=device-width, initial-scale=1" />';
+
+  const safetyStyle = `
+  <style data-synthr-safety>
+    :root { color-scheme: light; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: ${bodyFont}; color: #0f172a; background-color: #f8fafc; }
+    h1, h2, h3, h4, h5, h6 { font-family: ${headingFont}; letter-spacing: -0.02em; }
+    img, video { max-width: 100%; height: auto; }
+    body { overflow-x: hidden; }
+    header { position: relative; }
+    header::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      pointer-events: none;
+    }
+    header > * { position: relative; }
+    header h1, header h2, header p, header a, header span, header nav {
+      color: #f8fafc;
+      text-shadow: 0 2px 16px rgba(15, 23, 42, 0.55);
+    }
+    *[style*="background-image"] { position: relative; color: #f8fafc; }
+    *[style*="background-image"]::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      pointer-events: none;
+    }
+    *[style*="background-image"] > * { position: relative; }
+    a, button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; max-width: 100%; }
+    nav { flex-wrap: wrap; row-gap: 0.5rem; }
+  </style>`;
+
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/<head[^>]*>/i, (match) => `${match}\n  ${fontTags}${viewportTag}\n  ${safetyStyle}`);
+  }
+  return html.replace(/<html[^>]*>/i, (match) => `${match}\n<head>\n  ${fontTags}${viewportTag}\n  ${safetyStyle}\n</head>`);
+};
+
+const injectFallbackGallery = (html: string, assets: ImageAsset[]): string => {
+  if (assets.length === 0) return html;
+  if (/<img\s/i.test(html) || /background-image\s*:/i.test(html)) return html;
+
+  const gallery = `
+  <section class=\"py-16 bg-white\">
+    <div class=\"max-w-6xl mx-auto px-4\">
+      <h2 class=\"text-3xl font-bold text-slate-900 mb-8\">Gallery</h2>
+      <div class=\"grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6\">
+        ${assets.slice(0, 6).map((img) => `
+          <div class=\"overflow-hidden rounded-2xl shadow\">
+            <img src=\"${img.url}\" alt=\"${img.alt}\" class=\"w-full h-64 object-cover\" loading=\"lazy\" />
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  </section>
+  `;
+
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, `${gallery}\n</body>`);
+  }
+  return `${html}\n${gallery}`;
+};
+
+const buildFallbackHtml = (opts: {
+  name: string;
+  cuisineType: string;
+  priceRange: string;
+  tagline: string;
+  address: string;
+  city: string;
+  phone: string;
+  email: string;
+  neighborhood?: string;
+  parking?: string;
+  shortDescription?: string;
+  description?: string;
+  menuHTML: string;
+  hoursHTML: string;
+  orderingSection: string;
+  reservationsSection: string;
+  aboutSection: string;
+  cateringSection: string;
+  eventsSection: string;
+  socialHTML: string;
+  googleMapsLink?: string;
+  imageAssets: ImageAsset[];
+}): string => {
+  const {
+    name,
+    cuisineType,
+    priceRange,
+    tagline,
+    address,
+    city,
+    phone,
+    email,
+    neighborhood,
+    parking,
+    shortDescription,
+    description,
+    menuHTML,
+    hoursHTML,
+    orderingSection,
+    reservationsSection,
+    aboutSection,
+    cateringSection,
+    eventsSection,
+    socialHTML,
+    googleMapsLink,
+    imageAssets
+  } = opts;
+
+  const heroImage = imageAssets.find((img) => img.role === 'hero')?.url || imageAssets[0]?.url || '';
+  const heroAlt = imageAssets.find((img) => img.role === 'hero')?.alt || 'Restaurant hero image';
+  const galleryImages = imageAssets.filter((img) => img.role !== 'logo').slice(0, 6);
+  const summary = shortDescription || description || 'A welcoming neighborhood restaurant serving dishes made with fresh, seasonal ingredients.';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${name} | ${cuisineType}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-slate-50 text-slate-900">
+    <header class="relative">
+      <div class="absolute inset-0">
+        ${heroImage ? `<img src="${heroImage}" alt="${heroAlt}" class="w-full h-full object-cover" />` : ''}
+        <div class="absolute inset-0 bg-black/55"></div>
+      </div>
+      <div class="relative z-10 max-w-6xl mx-auto px-6 py-10">
+        <nav class="flex items-center justify-between text-white">
+          <div class="text-2xl font-semibold tracking-wide">${name}</div>
+          <div class="hidden md:flex items-center gap-6 text-sm uppercase tracking-wider">
+            <a href="#about" class="hover:text-amber-200">About</a>
+            <a href="#menu" class="hover:text-amber-200">Menu</a>
+            <a href="#hours" class="hover:text-amber-200">Hours</a>
+            <a href="#location" class="hover:text-amber-200">Location</a>
+          </div>
+          <div class="flex items-center gap-3">
+            <a href="#reserve" class="px-4 py-2 rounded-full border border-white/40 text-sm hover:bg-white/20">Reserve</a>
+            <a href="#order" class="px-4 py-2 rounded-full bg-amber-500 text-sm font-semibold text-slate-900 hover:bg-amber-400">Order Now</a>
+          </div>
+        </nav>
+        <div class="mt-20 max-w-2xl text-white">
+          <p class="text-sm uppercase tracking-[0.3em] text-amber-200">${cuisineType} · ${priceRange}</p>
+          <h1 class="text-5xl font-bold leading-tight mt-4">${tagline}</h1>
+          <p class="mt-6 text-lg text-white/85">${summary}</p>
+          <div class="mt-8 flex flex-wrap gap-4">
+            <a href="#order" class="px-6 py-3 rounded-full bg-amber-500 text-slate-900 font-semibold hover:bg-amber-400">Order Online</a>
+            <a href="#reserve" class="px-6 py-3 rounded-full border border-white/40 text-white font-semibold hover:bg-white/20">Reserve a Table</a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section id="about" class="py-16">
+      <div class="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-10 items-center">
+        <div>
+          <p class="text-sm uppercase tracking-[0.3em] text-amber-600">Our Story</p>
+          <h2 class="text-3xl font-bold mt-4">${name}</h2>
+          <p class="mt-5 text-slate-600 leading-relaxed">${summary}</p>
+          ${neighborhood ? `<p class="mt-4 text-slate-600">Neighborhood: ${neighborhood}</p>` : ''}
+          ${parking ? `<p class="mt-2 text-slate-600">Parking: ${parking}</p>` : ''}
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          ${galleryImages.slice(0, 4).map((img) => `
+            <div class="overflow-hidden rounded-2xl shadow">
+              <img src="${img.url}" alt="${img.alt}" class="w-full h-48 object-cover" loading="lazy" />
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </section>
+
+    ${aboutSection}
+
+    <section id="menu" class="py-16 bg-white">
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="flex items-center justify-between gap-6 mb-8">
+          <div>
+            <p class="text-sm uppercase tracking-[0.3em] text-amber-600">Menu</p>
+            <h2 class="text-3xl font-bold mt-2">Seasonal Favorites</h2>
+          </div>
+          <div class="hidden md:block text-sm text-slate-500">Ask about chef specials and fresh catches.</div>
+        </div>
+        ${menuHTML || '<p class="text-slate-600">Menu details coming soon.</p>'}
+      </div>
+    </section>
+
+    <section id="order" class="py-16">
+      <div class="max-w-6xl mx-auto px-6">
+        ${orderingSection || '<div class="p-8 bg-amber-50 rounded-2xl"><h3 class="text-2xl font-bold mb-2">Order Online</h3><p class="text-slate-600">Online ordering is coming soon. Call us to place an order.</p></div>'}
+      </div>
+    </section>
+
+    <section id="reserve" class="py-16 bg-white">
+      <div class="max-w-6xl mx-auto px-6">
+        ${reservationsSection || '<div class="p-8 bg-slate-100 rounded-2xl"><h3 class="text-2xl font-bold mb-2">Reserve a Table</h3><p class="text-slate-600">Walk-ins welcome. Call ahead for large parties.</p></div>'}
+      </div>
+    </section>
+
+    ${eventsSection}
+    ${cateringSection}
+
+    <section id="hours" class="py-16">
+      <div class="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-10">
+        <div>
+          <p class="text-sm uppercase tracking-[0.3em] text-amber-600">Hours</p>
+          <h2 class="text-3xl font-bold mt-2">Visit Us</h2>
+          <div class="mt-6 space-y-2">${hoursHTML || '<p class="text-slate-600">Hours available upon request.</p>'}</div>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-6">
+          <p class="text-sm uppercase tracking-[0.3em] text-amber-600">Location</p>
+          <h3 class="text-2xl font-bold mt-2">${address}, ${city}</h3>
+          <p class="mt-4 text-slate-600">${phone}</p>
+          <p class="text-slate-600">${email}</p>
+          ${googleMapsLink ? `<a href="${googleMapsLink}" class="inline-block mt-6 text-amber-700 font-semibold">View on Google Maps</a>` : ''}
+        </div>
+      </div>
+    </section>
+
+    <section id="location" class="py-16 bg-white">
+      <div class="max-w-6xl mx-auto px-6">
+        <p class="text-sm uppercase tracking-[0.3em] text-amber-600">Gallery</p>
+        <h2 class="text-3xl font-bold mt-2">A Taste of the Experience</h2>
+        <div class="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          ${galleryImages.map((img) => `
+            <div class="overflow-hidden rounded-2xl shadow">
+              <img src="${img.url}" alt="${img.alt}" class="w-full h-64 object-cover" loading="lazy" />
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </section>
+
+    <footer class="py-10 bg-slate-900 text-slate-200">
+      <div class="max-w-6xl mx-auto px-6 text-center">
+        <h3 class="text-2xl font-semibold">${name}</h3>
+        <p class="mt-2 text-slate-400">${address}, ${city}</p>
+        <p class="text-slate-400">${phone} · ${email}</p>
+        ${socialHTML}
+        <p class="mt-6 text-xs text-slate-500">© ${new Date().getFullYear()} ${name}. All rights reserved.</p>
+      </div>
+    </footer>
+  </body>
+</html>`;
+};
+
+// Initialize Groq AI
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
+});
+const groqModel = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+
+if (!process.env.GROQ_API_KEY) {
+  console.error("❌ GROQ_API_KEY is missing. Check your .env file.");
+}
+
+app.get("/", (_req: express.Request, res: express.Response) => {
+  console.log("GET / called"); // logs when endpoint is hit
+  res.send("✅ Server is alive");
+});
+
+app.get("/api/health", (_req: express.Request, res: express.Response) => {
+  res.json({ ok: true, timestamp: new Date().toISOString() });
+});
+
+// API endpoint for generating HTML
+app.post("/api/generate", async (req: express.Request, res: express.Response) => {
+  try {
+    console.log('📨 Received /api/generate request');
+    const {
+      // Basic Info
+      name,
+      type,
+      style,
+      tone,
+      cuisineType,
+      priceRange,
+      city,
+      address,
+      phone,
+      email,
+      tagline,
+      hours,
+      pages,
+      description,
+      
+      // Services
+      dineIn,
+      takeout,
+      delivery,
+      
+      // About
+      shortDescription,
+      fullStory,
+      yearFounded,
+      founderName,
+      
+      // Menu
+      menu,
+      
+      // Ordering & Reservations
+      onlineOrdering,
+      reservations,
+      
+      // Location
+      googleMapsLink,
+      parking,
+      neighborhood,
+      
+      // Social
+      socialLinks,
+      
+      // Events & Catering
+      hostEvents,
+      eventTypes,
+      weeklySpecials,
+      cateringAvailable,
+      cateringEmail,
+      privateEventCapacity,
+      
+      // Settings
+      images,
+      useStockImages,
+      customInstruction
+    } = req.body;
+
+    // Build menu section HTML
+    const menuByCategory: Record<string, any[]> = {};
+    menu?.forEach((item: any) => {
+      if (!menuByCategory[item.category]) {
+        menuByCategory[item.category] = [];
+      }
+      menuByCategory[item.category].push(item);
+    });
+
+    const menuHTML = Object.entries(menuByCategory)
+      .map(
+        ([category, items]) => `
+      <div class="mb-12">
+        <h3 class="text-2xl font-serif font-bold text-slate-900 mb-6">${category}</h3>
+        <div class="space-y-4">
+          ${(items as any[])
+            .map(
+              (item) => `
+            <div class="flex justify-between items-start pb-4 border-b border-slate-200">
+              <div class="flex-1">
+                <h4 class="text-lg font-semibold text-slate-900">${item.name}</h4>
+                <p class="text-slate-600 text-sm mt-1">${item.description}</p>
+              </div>
+              <span class="text-lg font-semibold text-slate-900 ml-4">$${item.price.toFixed(2)}</span>
+            </div>
+          `
+            )
+            .join("")}
+        </div>
+      </div>
+    `
+      )
+      .join("");
+
+    // Build hours section
+    const hoursHTML = Object.entries(hours || {})
+      .map(
+        ([day, time]) => `
+      <div class="flex justify-between items-center py-3 border-b border-slate-100 last:border-b-0">
+        <span class="font-medium text-slate-700">${day}</span>
+        <span class="text-slate-600">${time}</span>
+      </div>
+    `
+      )
+      .join("");
+
+    // Build online ordering buttons
+    let orderingSection = '';
+    if (onlineOrdering?.acceptOrders) {
+      const platformNames = onlineOrdering.platforms.map((p: string) => {
+        if (p === 'doordash') return 'DoorDash';
+        if (p === 'ubereats') return 'Uber Eats';
+        return p.charAt(0).toUpperCase() + p.slice(1);
+      }).join(', ');
+      orderingSection = `
+      <div class="py-8 border-t border-orange-100">
+        <h3 class="text-2xl font-bold text-slate-900 mb-4">Order Online</h3>
+        <p class="text-slate-600 mb-6">Available on: ${platformNames}</p>
+        <a href="${onlineOrdering.customURL || '#'}" class="inline-block px-6 py-3 bg-orange-600 text-white font-semibold rounded-lg hover:bg-orange-700">Order Now</a>
+      </div>
+      `;
+    }
+
+    // Build reservations section
+    let reservationsSection = '';
+    if (reservations?.acceptReservations) {
+      const platformNames = reservations.platforms.map((p: string) => p.charAt(0).toUpperCase() + p.slice(1)).join(', ');
+      reservationsSection = `
+      <div class="py-8 border-t border-orange-100">
+        <h3 class="text-2xl font-bold text-slate-900 mb-4">Make a Reservation</h3>
+        <p class="text-slate-600 mb-6">Book your table on: ${platformNames}</p>
+        <a href="${reservations.url || 'tel:' + phone}" class="inline-block px-6 py-3 bg-amber-600 text-white font-semibold rounded-lg hover:bg-amber-700">Reserve Now</a>
+      </div>
+      `;
+    }
+
+    // Build about section
+    const aboutSection = fullStory ? `
+      <section class="py-16 bg-orange-50">
+        <div class="max-w-4xl mx-auto px-4">
+          <h2 class="text-3xl font-bold text-slate-900 mb-6">Our Story</h2>
+          <p class="text-slate-700 text-lg leading-relaxed mb-4">${fullStory}</p>
+          ${founderName ? `<p class="text-slate-600">Founded by ${founderName}${yearFounded ? ` in ${yearFounded}` : ''}</p>` : ''}
+        </div>
+      </section>
+    ` : '';
+
+    // Build catering section
+    const cateringSection = cateringAvailable ? `
+      <section class="py-16 bg-slate-50">
+        <div class="max-w-4xl mx-auto px-4">
+          <h2 class="text-3xl font-bold text-slate-900 mb-6">🎂 Catering & Private Events</h2>
+          <p class="text-slate-700 text-lg mb-6">Host your special event at ${name}. We offer catering for ${privateEventCapacity || '60'} guests.</p>
+          <a href="mailto:${cateringEmail || email}" class="inline-block px-6 py-3 bg-orange-600 text-white font-semibold rounded-lg hover:bg-orange-700">Inquire About Catering</a>
+        </div>
+      </section>
+    ` : '';
+
+    // Build events section
+    const eventsSection = hostEvents && weeklySpecials ? `
+      <section class="py-16 bg-amber-50">
+        <div class="max-w-4xl mx-auto px-4">
+          <h2 class="text-3xl font-bold text-slate-900 mb-6">🎵 Events & Specials</h2>
+          <p class="text-slate-700 text-lg whitespace-pre-line">${weeklySpecials}</p>
+        </div>
+      </section>
+    ` : '';
+
+    // Build social links HTML
+    const socialHTML = socialLinks && Object.values(socialLinks).some(v => v) ? `
+      <div class="flex gap-4 justify-center mt-6">
+        ${socialLinks.instagram ? `<a href="https://instagram.com/${socialLinks.instagram}" class="text-orange-600 hover:text-orange-700 font-semibold">Instagram</a>` : ''}
+        ${socialLinks.tiktok ? `<a href="https://tiktok.com/@${socialLinks.tiktok}" class="text-orange-600 hover:text-orange-700 font-semibold">TikTok</a>` : ''}
+        ${socialLinks.yelp ? `<a href="${socialLinks.yelp}" class="text-orange-600 hover:text-orange-700 font-semibold">Yelp</a>` : ''}
+      </div>
+    ` : '';
+
+    const imageAssets = buildImageAssets(images, useStockImages);
+    const imageInstructions = imageAssets.length > 0
+      ? `
+🖼️ IMAGE ASSETS (use these exact URLs, do not invent new ones):
+${imageAssets.map((img) => `- ${img.role.toUpperCase()}: ${img.url} (alt: ${img.alt})`).join('\n')}
+`
+      : '';
+
+    const prompt = `Create a high-converting, professional restaurant website with the following details:
+
+🏪 RESTAURANT INFO:
+Name: ${name}
+Cuisine: ${cuisineType}
+Price Range: ${priceRange}
+Tagline: ${tagline || 'Delicious cuisine, unforgettable experience'}
+Address: ${address}, ${city}
+Phone: ${phone}
+Email: ${email}
+${neighborhood ? 'Neighborhood: ' + neighborhood : ''}
+${parking ? 'Parking: ' + parking : ''}
+
+📋 ABOUT:
+${shortDescription || description}
+${fullStory && founderName ? `
+Founded by ${founderName}${yearFounded ? ` in ${yearFounded}` : ''}.
+${fullStory}` : ''}
+
+🍽️ MENU:
+${menu?.map((item: any) => `- ${item.name}: ${item.description} ($${item.price.toFixed(2)})`).join('\n')}
+
+⏰ HOURS:
+${Object.entries(hours || {}).map(([day, time]) => `${day}: ${time}`).join('\n')}
+
+🛒 SERVICES:
+${[dineIn && '✓ Dine-in', takeout && '✓ Takeout', delivery && '✓ Delivery'].filter(Boolean).join(', ')}
+
+📱 ONLINE ORDERING:
+${onlineOrdering?.acceptOrders ? `Available on: ${onlineOrdering.platforms.join(', ')} - URL: ${onlineOrdering.customURL}` : 'Not available'}
+
+📅 RESERVATIONS:
+${reservations?.acceptReservations ? `Available on: ${reservations.platforms.join(', ')} - URL: ${reservations.url}` : 'Not available'}
+
+🎂 CATERING:
+${cateringAvailable ? `Available - Capacity: ${privateEventCapacity} guests - Email: ${cateringEmail}` : 'Not available'}
+
+🎵 EVENTS:
+${hostEvents && weeklySpecials ? weeklySpecials : 'No regular events'}
+
+📱 SOCIAL:
+${socialLinks?.instagram ? 'Instagram: ' + socialLinks.instagram + ' ' : ''}${socialLinks?.tiktok ? 'TikTok: ' + socialLinks.tiktok : ''}
+
+Design Style: ${style} 
+Tone: ${tone}
+
+${customInstruction ? `⭐ SPECIAL REQUEST: "${customInstruction}"` : ''}
+${imageInstructions}
+
+REQUIREMENTS:
+- Create a complete, valid HTML document (no markdown)
+- Use Tailwind CSS via CDN
+- Use the provided IMAGE ASSETS URLs. Ensure at least 4 images are visible on the page.
+- Mobile-responsive design
+- Include: Hero, Navigation, About Us, Full Menu (organized by category), Hours, Location/Map, Reservation/Order CTAs, Social Links, Footer
+- Typography must be consistent and professional (limit to 2 complementary fonts).
+- Ensure strong contrast between text and background; if text sits on images, add a dark overlay or a solid background card.
+- Avoid any overlapping elements; no absolute positioning for text blocks unless paired with safe padding and overlays.
+- All buttons must be readable, aligned, and never overlap; use flex-wrap for button groups.
+- Use clean spacing and alignment so sections feel organized and realistic.
+- ${style === "Luxury" ? 'Elegant, upscale, fine dining aesthetic with premium typography' : style === "Modern" ? 'Clean, contemporary, minimalist design' : style === "Casual" ? 'Friendly, inviting, approachable design' : 'Professional and polished'}
+- ${tone === "Traditional" ? 'Classic, timeless language' : tone === "Trendy" ? 'Modern, fashionable voice' : tone === "Upscale" ? 'Premium, sophisticated tone' : 'Warm, welcoming, family-friendly'}
+- Prominent "Order Now" and "Reserve" buttons
+- Fast-loading, optimal performance
+- Professional footer with all contact information
+- No empty sections or placeholder text. If a detail is missing, write tasteful, generic copy without inventing facts like address, phone, or prices.
+
+Return ONLY raw HTML - no markdown code blocks, no explanations.`;
+
+    console.log('🤖 Calling Groq API...');
+    const response = await groq.chat.completions.create({
+      messages: [{ role: 'user', content: prompt }],
+      model: groqModel,
+      temperature: 1,
+      max_tokens: 4096,
+    });
+    console.log('✅ Groq response received');
+
+    const html = response.choices[0]?.message?.content || "<html><body>Error generating preview.</body></html>";
+    console.log('📝 Raw HTML length:', html.length);
+    
+    // Better HTML cleaning - handle various markdown wrapping formats
+    let cleanHtml = html;
+    if (cleanHtml.includes('```html')) {
+      cleanHtml = cleanHtml.replace(/```html\n?/g, '').replace(/```\n?/g, '');
+    }
+    if (cleanHtml.includes('```')) {
+      cleanHtml = cleanHtml.replace(/```[a-z]*\n?/g, '').replace(/```\n?/g, '');
+    }
+    cleanHtml = cleanHtml.trim();
+
+    cleanHtml = ensureTailwindCdn(cleanHtml);
+    cleanHtml = ensureDesignSafetyStyles(cleanHtml, style);
+    cleanHtml = injectFallbackGallery(cleanHtml, imageAssets);
+    
+    console.log('🧹 Cleaned HTML length:', cleanHtml.length);
+    
+    // Validate that we have actual HTML
+    if (!cleanHtml.includes('<html') && !cleanHtml.includes('<HTML')) {
+      console.warn('⚠️ Response does not contain HTML tags. Raw response:', html.substring(0, 200));
+    }
+
+    const looksInvalid =
+      cleanHtml.length < 1200 ||
+      !/<body[^>]*>/i.test(cleanHtml) ||
+      (!/<nav[^>]*>/i.test(cleanHtml) && !/<header[^>]*>/i.test(cleanHtml)) ||
+      (!/<section[^>]*>/i.test(cleanHtml) && !/<img\\s/i.test(cleanHtml));
+
+    if (looksInvalid) {
+      console.warn('⚠️ Using fallback template due to low-quality HTML output.');
+      cleanHtml = buildFallbackHtml({
+        name,
+        cuisineType,
+        priceRange,
+        tagline: tagline || 'Delicious cuisine, unforgettable experience',
+        address,
+        city,
+        phone,
+        email,
+        neighborhood,
+        parking,
+        shortDescription,
+        description,
+        menuHTML,
+        hoursHTML,
+        orderingSection,
+        reservationsSection,
+        aboutSection,
+        cateringSection,
+        eventsSection,
+        socialHTML,
+        googleMapsLink,
+        imageAssets
+      });
+    }
+
+    res.json({ html: cleanHtml });
+    console.log('✅ Response sent successfully');
+  } catch (error) {
+    console.error("❌ Generation error:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: "Failed to generate website", details: errorMessage });
+  }
+});
+
+app.listen(3000, () => {
+  console.log("✅ Server running on http://localhost:3000");
+});

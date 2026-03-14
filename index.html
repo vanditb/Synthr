@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Synthr - Instant Websites</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              serif: ['Playfair Display', 'serif'],
+            },
+            colors: {
+              synthr: {
+                black: '#121212',
+                gray: '#F3F4F6',
+                accent: '#4F46E5'
+              }
+            },
+            animation: {
+              'shimmer': 'shimmer 2.5s infinite linear',
+            },
+            keyframes: {
+              shimmer: {
+                '0%': { backgroundPosition: '-200% 0' },
+                '100%': { backgroundPosition: '200% 0' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body { font-family: 'Inter', sans-serif; }
+      .shimmer-btn {
+        background: linear-gradient(90deg, #0f172a 0%, #334155 50%, #0f172a 100%);
+        background-size: 200% auto;
+      }
+      .shimmer-btn:hover {
+        animation: shimmer 1.5s infinite linear;
+      }
+    </style>
+
+</head>
+  <body>
+    <div id="root"></div>    <script type="module" src="/index.tsx"></script>  </body>
+</html>
