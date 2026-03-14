@@ -368,9 +368,6 @@ const buildFallbackHtml = (opts: {
 </html>`;
 };
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
 const groqModel = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 
 export default async function handler(req: any, res: any) {
@@ -385,6 +382,9 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
+    const groq = new Groq({
+      apiKey: process.env.GROQ_API_KEY,
+    });
     const {
       name,
       type,
