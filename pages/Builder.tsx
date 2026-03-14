@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BusinessDetails, BusinessType, WebsiteStyle, RestaurantTone, MenuItem } from '../types.ts';
+import { BusinessDetails, BusinessType, WebsiteStyle, RestaurantTone, MenuItem } from '../types';
 import { Upload, Check, Loader2, Plus, Trash2, ChevronDown, Link2 } from 'lucide-react';
 
 export const Builder: React.FC<{ setDetails: (d: BusinessDetails) => void }> = ({ setDetails }) => {
