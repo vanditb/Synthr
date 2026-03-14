@@ -20,23 +20,6 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [serverError, setServerError] = useState<string | null>(null);
-  const [checkingServer, setCheckingServer] = useState(false);
-
-  const checkServer = async () => {
-    setCheckingServer(true);
-    try {
-      const res = await fetch('/api/health');
-      if (!res.ok) {
-        throw new Error(`Health check failed (${res.status})`);
-      }
-      setServerError(null);
-    } catch (_err) {
-      setServerError('Backend is unreachable. Start the API with `npm run dev`.');
-    } finally {
-      setCheckingServer(false);
-    }
-  };
 
   const performGeneration = async (instruction?: string) => {
     if (!details) return;
@@ -72,7 +55,6 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
       navigate('/create');
       return;
     }
-    checkServer();
     performGeneration();
   }, [details, navigate]);
 
@@ -183,19 +165,6 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
 
         {/* Chat / Request Area */}
         <div className="flex-1 p-6 overflow-y-auto">
-          {serverError && (
-            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
-              <p className="text-sm font-semibold">Server connection issue</p>
-              <p className="text-sm mt-1">{serverError}</p>
-              <button
-                onClick={checkServer}
-                disabled={checkingServer}
-                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-800 disabled:opacity-50"
-              >
-                {checkingServer ? 'Checking…' : 'Retry health check'}
-              </button>
-            </div>
-          )}
           <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 mb-6">
             <div className="flex items-center gap-2 mb-2 text-indigo-800 font-semibold">
               <Sparkles size={16} />
