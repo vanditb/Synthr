@@ -31,8 +31,10 @@ const ScrambleText = ({ text }: { text: string }) => {
   }, [text]);
 
   useEffect(() => {
-    const timer = setTimeout(scramble, 500);
-    return () => clearTimeout(timer);
+    const cleanup = scramble();
+    return () => {
+      if (typeof cleanup === 'function') cleanup();
+    };
   }, [scramble]);
 
   return <span>{displayText || ' '}</span>;
@@ -64,14 +66,90 @@ export const Landing: React.FC = () => {
         <div className="absolute top-20 right-10 w-40 h-40 bg-orange-200 rounded-full filter blur-3xl opacity-20"></div>
         <div className="absolute bottom-20 left-10 w-60 h-60 bg-amber-300 rounded-full filter blur-3xl opacity-15"></div>
 
-        <div className="max-w-4xl mx-auto text-center relative z-10 w-full">
-          <div className="inline-flex items-center gap-2 bg-white/80 backdrop-blur-sm border border-orange-200 rounded-full px-4 py-2 mb-8 shadow-lg">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
-            </span>
-            <span className="text-xs font-semibold text-orange-700 uppercase tracking-wide">Restaurant AI</span>
+        {/* Animated UI Tabs Behind Hero Text */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute -top-16 -right-8 w-72 h-72 bg-amber-200/60 rounded-full blur-3xl"></div>
+          <div className="absolute -bottom-10 -left-8 w-72 h-72 bg-orange-200/60 rounded-full blur-3xl"></div>
+
+          {/* Top-right "laptop tab" */}
+          <div className="absolute top-2 -right-20 sm:top-6 sm:-right-20 w-[40rem] sm:w-[56rem] opacity-40 animate-slide-in-right will-change-transform">
+            <div className="rounded-2xl border border-amber-200 bg-white/85 shadow-xl backdrop-blur-md overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-amber-200 bg-white/90">
+                <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+                <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span className="ml-2 text-[10px] font-semibold text-stone-500">Generating</span>
+              </div>
+              <div className="p-4 pb-12 space-y-2 relative min-h-[320px]">
+                <div className="absolute top-3 right-3 h-16 w-16">
+                  <svg
+                    viewBox="0 0 100 100"
+                    className="absolute inset-0 h-full w-full animate-spin"
+                    style={{ animationDuration: '12s' }}
+                  >
+                    <defs>
+                      <path
+                        id="genCirclePath"
+                        d="M50,50 m-35,0 a35,35 0 1,1 70,0 a35,35 0 1,1 -70,0"
+                      />
+                    </defs>
+                    <text fontSize="8" fill="#a16207" letterSpacing="2">
+                      <textPath href="#genCirclePath">
+                        Generating website • Generating website •
+                      </textPath>
+                    </text>
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div
+                      className="h-6 w-6 rounded-full border-2 border-amber-600 border-t-transparent animate-spin"
+                      style={{ animationDuration: '1.4s' }}
+                    />
+                  </div>
+                </div>
+                <div className="h-3 w-24 rounded-full bg-stone-200/80 animate-pulse"></div>
+                <div className="h-2 w-full rounded-full bg-stone-100"></div>
+                <div className="h-2 w-5/6 rounded-full bg-stone-100"></div>
+                <div className="h-2 w-4/6 rounded-full bg-stone-100"></div>
+                <div className="mt-3 h-2 w-1/2 rounded-full bg-amber-200/80 animate-pulse"></div>
+                <div className="relative h-2 w-full rounded-full bg-stone-100 overflow-hidden">
+                  <div className="absolute inset-y-0 left-0 w-2/3 bg-amber-500/70 animate-pulse"></div>
+                </div>
+              </div>
+            </div>
           </div>
+
+          {/* Bottom-left "laptop tab" */}
+          <div className="absolute bottom-2 left-4 sm:bottom-6 sm:left-12 w-[40rem] sm:w-[56rem] opacity-40 animate-slide-in-left will-change-transform">
+            <div className="rounded-2xl border border-amber-200 bg-white/85 shadow-xl backdrop-blur-md overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-amber-200 bg-white/90">
+                <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+                <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span className="ml-2 text-[10px] font-semibold text-stone-500">Publish</span>
+              </div>
+              <div className="p-4 pt-12 relative min-h-[320px]">
+                <div className="h-2 w-full rounded-full bg-stone-100"></div>
+                <div className="mt-2 h-2 w-5/6 rounded-full bg-stone-100"></div>
+                <div className="mt-2 h-2 w-4/6 rounded-full bg-stone-100"></div>
+                <div className="mt-2 h-2 w-3/6 rounded-full bg-stone-100"></div>
+                <div className="mt-2 h-2 w-2/6 rounded-full bg-stone-100"></div>
+                <div className="mt-4 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-orange-600 to-amber-600 text-white text-[11px] font-semibold shadow-md">
+                  Publish Website
+                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+                </div>
+                <div className="absolute right-6 bottom-3">
+                  <div className="relative">
+                    <div className="w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-t-12 border-stone-900 rotate-[-20deg] animate-bounce"></div>
+                    <span className="absolute -right-3 -bottom-3 w-5 h-5 rounded-full border-2 border-amber-400/70 animate-ping"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-4xl mx-auto text-center relative z-10 w-full">
+          <div className="mb-8"></div>
           
           <h1 className="text-5xl sm:text-7xl font-bold tracking-tight text-stone-900 mb-8 leading-[1.1] font-serif">
             Your restaurant, <br className="sm:hidden" />

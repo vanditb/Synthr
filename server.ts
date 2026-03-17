@@ -20,61 +20,246 @@ type ImageAsset = {
   alt: string;
 };
 
-const defaultStockImages: ImageAsset[] = [
-  {
-    role: 'hero',
-    url: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1600&q=80',
-    alt: 'Elegant restaurant dining room'
+const cuisineImagePools: Record<string, Record<ImageAsset['role'], ImageAsset[]>> = {
+  italian: {
+    hero: [
+      { role: 'hero', url: 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?auto=format&fit=crop&w=1600&q=80', alt: 'Italian restaurant interior' },
+      { role: 'hero', url: 'https://images.unsplash.com/photo-1528712306091-ed0763094c98?auto=format&fit=crop&w=1600&q=80', alt: 'Cozy trattoria ambiance' }
+    ],
+    interior: [
+      { role: 'interior', url: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1600&q=80', alt: 'Elegant dining room' },
+      { role: 'interior', url: 'https://images.unsplash.com/photo-1544148103-0773bf10d330?auto=format&fit=crop&w=1600&q=80', alt: 'Modern restaurant seating' }
+    ],
+    food: [
+      { role: 'food', url: 'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&w=1600&q=80', alt: 'Italian pasta dish' },
+      { role: 'food', url: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=1600&q=80', alt: 'Pizza with fresh ingredients' }
+    ],
+    dish: [
+      { role: 'dish', url: 'https://images.unsplash.com/photo-1473093295043-cdd812d0e601?auto=format&fit=crop&w=1600&q=80', alt: 'Handmade pasta' },
+      { role: 'dish', url: 'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&w=1600&q=80', alt: 'Signature pasta plate' }
+    ],
+    dessert: [
+      { role: 'dessert', url: 'https://images.unsplash.com/photo-1505253716362-afaea1d3d1af?auto=format&fit=crop&w=1600&q=80', alt: 'Tiramisu dessert' },
+      { role: 'dessert', url: 'https://images.unsplash.com/photo-1499636136210-6f4ee915583e?auto=format&fit=crop&w=1600&q=80', alt: 'Chocolate dessert' }
+    ],
+    bar: [
+      { role: 'bar', url: 'https://images.unsplash.com/photo-1470337458703-46ad1756a187?auto=format&fit=crop&w=1600&q=80', alt: 'Cocktail bar' },
+      { role: 'bar', url: 'https://images.unsplash.com/photo-1481833761820-0509d3217039?auto=format&fit=crop&w=1600&q=80', alt: 'Wine and cocktails' }
+    ],
+    logo: []
   },
-  {
-    role: 'interior',
-    url: 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?auto=format&fit=crop&w=1600&q=80',
-    alt: 'Warm, inviting restaurant interior'
-  },
-  {
-    role: 'food',
-    url: 'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&w=1600&q=80',
-    alt: 'Plated signature entree'
-  },
-  {
-    role: 'dish',
-    url: 'https://images.unsplash.com/photo-1476224203421-9ac39bcb3327?auto=format&fit=crop&w=1600&q=80',
-    alt: 'Chef-prepared seasonal dish'
-  },
-  {
-    role: 'dessert',
-    url: 'https://images.unsplash.com/photo-1481391032119-d89fee407e44?auto=format&fit=crop&w=1600&q=80',
-    alt: 'Dessert with fresh berries'
-  },
-  {
-    role: 'bar',
-    url: 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=1600&q=80',
-    alt: 'Cocktails at the bar'
+  japanese: {
+    hero: [
+      { role: 'hero', url: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=1600&q=80', alt: 'Japanese cuisine spread' },
+      { role: 'hero', url: 'https://images.unsplash.com/photo-1542528180-1c2803fa048c?auto=format&fit=crop&w=1600&q=80', alt: 'Minimalist Japanese dining' }
+    ],
+    interior: [
+      { role: 'interior', url: 'https://images.unsplash.com/photo-1544148103-0773bf10d330?auto=format&fit=crop&w=1600&q=80', alt: 'Modern restaurant interior' },
+      { role: 'interior', url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1600&q=80', alt: 'Warm dining room lighting' }
+    ],
+    food: [
+      { role: 'food', url: 'https://images.unsplash.com/photo-1546069901-5f1a4c5b4b10?auto=format&fit=crop&w=1600&q=80', alt: 'Sushi assortment' },
+      { role: 'food', url: 'https://images.unsplash.com/photo-1553621042-f6e147245754?auto=format&fit=crop&w=1600&q=80', alt: 'Ramen bowl' }
+    ],
+    dish: [
+      { role: 'dish', url: 'https://images.unsplash.com/photo-1546069901-5f1a4c5b4b10?auto=format&fit=crop&w=1600&q=80', alt: 'Sushi plate' },
+      { role: 'dish', url: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=1600&q=80', alt: 'Signature Japanese dish' }
+    ],
+    dessert: [
+      { role: 'dessert', url: 'https://images.unsplash.com/photo-1499636136210-6f4ee915583e?auto=format&fit=crop&w=1600&q=80', alt: 'Sweet dessert' },
+      { role: 'dessert', url: 'https://images.unsplash.com/photo-1505253716362-afaea1d3d1af?auto=format&fit=crop&w=1600&q=80', alt: 'Dessert plate' }
+    ],
+    bar: [
+      { role: 'bar', url: 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=1600&q=80', alt: 'Cocktail bar' },
+      { role: 'bar', url: 'https://images.unsplash.com/photo-1470337458703-46ad1756a187?auto=format&fit=crop&w=1600&q=80', alt: 'Bar drinks' }
+    ],
+    logo: []
   }
-];
+};
 
-const buildImageAssets = (images: { type: 'interior' | 'food' | 'logo'; data: string }[] | undefined, useStockImages: boolean): ImageAsset[] => {
+const defaultStockImagePool: Record<ImageAsset['role'], ImageAsset[]> = {
+  hero: [
+    { role: 'hero', url: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1600&q=80', alt: 'Elegant restaurant dining room' },
+    { role: 'hero', url: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1600&q=80', alt: 'Beautifully plated dishes on a table' }
+  ],
+  interior: [
+    { role: 'interior', url: 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?auto=format&fit=crop&w=1600&q=80', alt: 'Warm, inviting restaurant interior' },
+    { role: 'interior', url: 'https://images.unsplash.com/photo-1544148103-0773bf10d330?auto=format&fit=crop&w=1600&q=80', alt: 'Modern restaurant seating' }
+  ],
+  food: [
+    { role: 'food', url: 'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&w=1600&q=80', alt: 'Plated signature entree' },
+    { role: 'food', url: 'https://images.unsplash.com/photo-1498579809087-ef1e558fd1da?auto=format&fit=crop&w=1600&q=80', alt: 'Seasonal plate with fresh ingredients' }
+  ],
+  dish: [
+    { role: 'dish', url: 'https://images.unsplash.com/photo-1476224203421-9ac39bcb3327?auto=format&fit=crop&w=1600&q=80', alt: 'Chef-prepared seasonal dish' },
+    { role: 'dish', url: 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?auto=format&fit=crop&w=1600&q=80', alt: 'Fresh seafood plate' }
+  ],
+  dessert: [
+    { role: 'dessert', url: 'https://images.unsplash.com/photo-1481391032119-d89fee407e44?auto=format&fit=crop&w=1600&q=80', alt: 'Dessert with fresh berries' },
+    { role: 'dessert', url: 'https://images.unsplash.com/photo-1499636136210-6f4ee915583e?auto=format&fit=crop&w=1600&q=80', alt: 'Chocolate dessert' }
+  ],
+  bar: [
+    { role: 'bar', url: 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=1600&q=80', alt: 'Cocktails at the bar' },
+    { role: 'bar', url: 'https://images.unsplash.com/photo-1470337458703-46ad1756a187?auto=format&fit=crop&w=1600&q=80', alt: 'Bartender preparing drinks' }
+  ],
+  logo: []
+};
+
+const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
+const PEXELS_API_KEY = process.env.PEXELS_API_KEY;
+
+type ImageQuery = { role: ImageAsset['role']; query: string };
+
+const sanitizeQuery = (value: string): string =>
+  value.replace(/[^\w\s-]/g, ' ').replace(/\s+/g, ' ').trim();
+
+const buildSearchQueries = (
+  cuisineType: string | undefined,
+  menu: { name?: string; description?: string }[] | undefined,
+  style?: string
+): ImageQuery[] => {
+  const cuisine = sanitizeQuery(cuisineType || 'restaurant');
+  const styleHint = sanitizeQuery(style || '');
+  const menuItems = (menu || [])
+    .map((item) => sanitizeQuery(item?.name || ''))
+    .filter(Boolean)
+    .slice(0, 4);
+
+  const queries: ImageQuery[] = [
+    { role: 'hero', query: `${cuisine} restaurant hero ${styleHint} interior` },
+    { role: 'interior', query: `${cuisine} restaurant interior warm lighting` },
+    { role: 'interior', query: `${cuisine} chef kitchen plating` },
+    { role: 'bar', query: `${cuisine} cocktail bar atmosphere` },
+    { role: 'dessert', query: `${cuisine} dessert plated` }
+  ];
+
+  menuItems.forEach((item, idx) => {
+    const role: ImageAsset['role'] = idx % 2 === 0 ? 'food' : 'dish';
+    queries.push({ role, query: `${cuisine} ${item} food photography` });
+  });
+
+  return queries;
+};
+
+const searchUnsplash = async (query: string, perPage: number): Promise<ImageAsset[]> => {
+  if (!UNSPLASH_ACCESS_KEY) return [];
+  const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=${perPage}&orientation=landscape`;
+  const res = await fetch(url, { headers: { Authorization: `Client-ID ${UNSPLASH_ACCESS_KEY}` } });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data?.results || [])
+    .map((item: any) => ({
+      role: 'food',
+      url: item?.urls?.regular || item?.urls?.full,
+      alt: item?.alt_description || item?.description || query
+    }))
+    .filter((img: ImageAsset) => Boolean(img.url));
+};
+
+const searchPexels = async (query: string, perPage: number): Promise<ImageAsset[]> => {
+  if (!PEXELS_API_KEY) return [];
+  const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${perPage}&orientation=landscape`;
+  const res = await fetch(url, { headers: { Authorization: PEXELS_API_KEY } });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data?.photos || [])
+    .map((item: any) => ({
+      role: 'food',
+      url: item?.src?.large2x || item?.src?.large,
+      alt: item?.alt || query
+    }))
+    .filter((img: ImageAsset) => Boolean(img.url));
+};
+
+const collectApiImages = async (queries: ImageQuery[]): Promise<ImageAsset[]> => {
+  const results: ImageAsset[] = [];
+  const seen = new Set<string>();
+  for (const query of queries) {
+    let candidates: ImageAsset[] = [];
+    try {
+      candidates = await searchPexels(query.query, 6);
+      if (candidates.length === 0) {
+        candidates = await searchUnsplash(query.query, 6);
+      }
+    } catch (_err) {
+      candidates = [];
+    }
+    const picked = candidates.find((img) => img.url && !seen.has(img.url));
+    if (picked?.url) {
+      seen.add(picked.url);
+      results.push({ ...picked, role: query.role });
+    }
+  }
+  return results;
+};
+
+const hashString = (value: string): number => {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash;
+};
+
+const pickDeterministic = <T,>(items: T[], seed: number): T => items[Math.abs(seed) % items.length];
+
+const getCuisinePool = (cuisineType: string | undefined): Record<ImageAsset['role'], ImageAsset[]> => {
+  const key = (cuisineType || '').toLowerCase();
+  if (key.includes('italian')) return cuisineImagePools.italian;
+  if (key.includes('japanese')) return cuisineImagePools.japanese;
+  return defaultStockImagePool;
+};
+
+const buildImageAssets = async (
+  images: { type: 'interior' | 'food' | 'logo'; data: string }[] | undefined,
+  useStockImages: boolean,
+  cuisineType?: string,
+  name?: string,
+  menu?: { name?: string; description?: string }[],
+  style?: string
+): Promise<ImageAsset[]> => {
   const assets: ImageAsset[] = [];
+  const seen = new Set<string>();
 
   if (images && images.length > 0) {
     for (const img of images) {
       if (!img?.data) continue;
-      if (img.type === 'logo') {
+      if (img.type === 'logo' && !seen.has(img.data)) {
+        seen.add(img.data);
         assets.push({ role: 'logo', url: img.data, alt: 'Restaurant logo' });
       }
-      if (img.type === 'interior') {
+      if (img.type === 'interior' && !seen.has(img.data)) {
+        seen.add(img.data);
         assets.push({ role: 'interior', url: img.data, alt: 'Restaurant interior' });
       }
-      if (img.type === 'food') {
+      if (img.type === 'food' && !seen.has(img.data)) {
+        seen.add(img.data);
         assets.push({ role: 'food', url: img.data, alt: 'Signature dish' });
       }
     }
   }
 
-  if (useStockImages) {
-    for (const stock of defaultStockImages) {
-      if (!assets.some((a) => a.role === stock.role)) {
-        assets.push(stock);
+  if (useStockImages || assets.length < 6) {
+    const poolByCuisine = getCuisinePool(cuisineType);
+    const queries = buildSearchQueries(cuisineType, menu, style);
+    const apiImages = await collectApiImages(queries);
+    apiImages.forEach((img) => {
+      if (img.url && !seen.has(img.url)) {
+        seen.add(img.url);
+        assets.push(img);
+      }
+    });
+
+    const seed = hashString(`${name || ''}:${cuisineType || ''}:${style || ''}`);
+    const flattenedPool = (Object.values(poolByCuisine) as ImageAsset[][]).flat();
+    let cursor = 0;
+    while (assets.length < 8 && flattenedPool.length > 0) {
+      const fallback = pickDeterministic(flattenedPool, seed + cursor);
+      cursor += 1;
+      if (fallback?.url && !seen.has(fallback.url)) {
+        seen.add(fallback.url);
+        assets.push(fallback);
       }
     }
   }
@@ -238,7 +423,12 @@ const buildFallbackHtml = (opts: {
 
   const heroImage = imageAssets.find((img) => img.role === 'hero')?.url || imageAssets[0]?.url || '';
   const heroAlt = imageAssets.find((img) => img.role === 'hero')?.alt || 'Restaurant hero image';
-  const galleryImages = imageAssets.filter((img) => img.role !== 'logo').slice(0, 6);
+  const galleryImages = imageAssets.filter((img) => img.role !== 'logo');
+  const safeImages = galleryImages.length > 0 ? galleryImages : imageAssets;
+  const getImage = (idx: number, fallbackAlt: string) =>
+    safeImages[idx] || safeImages[0] || { url: heroImage, alt: fallbackAlt };
+  const primaryButton = 'px-6 py-3 rounded-xl bg-amber-500 text-slate-900 font-semibold hover:bg-amber-400 transition-all duration-300 shadow-lg';
+  const secondaryButton = 'px-6 py-3 rounded-xl border border-white/40 text-white font-semibold hover:bg-white/10 transition-all duration-300';
   const summary = shortDescription || description || 'A welcoming neighborhood restaurant serving dishes made with fresh, seasonal ingredients.';
 
   return `<!DOCTYPE html>
@@ -250,23 +440,28 @@ const buildFallbackHtml = (opts: {
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
   <body class="bg-slate-50 text-slate-900">
-    <header class="relative">
+    <header id="home" class="relative">
       <div class="absolute inset-0">
         ${heroImage ? `<img src="${heroImage}" alt="${heroAlt}" class="w-full h-full object-cover" />` : ''}
         <div class="absolute inset-0 bg-black/55"></div>
       </div>
       <div class="relative z-10 max-w-6xl mx-auto px-6 py-10">
-        <nav class="flex items-center justify-between text-white">
+        <nav class="flex items-center justify-between text-white sticky top-0 z-40 bg-slate-900/60 backdrop-blur border-b border-white/10 px-4 py-3 rounded-2xl shadow-lg">
           <div class="text-2xl font-semibold tracking-wide">${name}</div>
           <div class="hidden md:flex items-center gap-6 text-sm uppercase tracking-wider">
+            <a href="#home" class="hover:text-amber-200">Home</a>
             <a href="#about" class="hover:text-amber-200">About</a>
             <a href="#menu" class="hover:text-amber-200">Menu</a>
+            <a href="#featured" class="hover:text-amber-200">Featured</a>
+            <a href="#experience" class="hover:text-amber-200">Experience</a>
             <a href="#hours" class="hover:text-amber-200">Hours</a>
-            <a href="#location" class="hover:text-amber-200">Location</a>
+            <a href="#order" class="hover:text-amber-200">Order</a>
+            <a href="#reserve" class="hover:text-amber-200">Reserve</a>
+            <a href="#contact" class="hover:text-amber-200">Contact</a>
           </div>
           <div class="flex items-center gap-3">
-            <a href="#reserve" class="px-4 py-2 rounded-full border border-white/40 text-sm hover:bg-white/20">Reserve</a>
-            <a href="#order" class="px-4 py-2 rounded-full bg-amber-500 text-sm font-semibold text-slate-900 hover:bg-amber-400">Order Now</a>
+            <a href="#reserve" class="px-4 py-2 rounded-full border border-white/40 text-sm hover:bg-white/20 transition-all duration-300">Reserve</a>
+            <a href="#order" class="px-4 py-2 rounded-full bg-amber-500 text-sm font-semibold text-slate-900 hover:bg-amber-400 transition-all duration-300 shadow-lg">Order Now</a>
           </div>
         </nav>
         <div class="mt-20 max-w-2xl text-white">
@@ -274,8 +469,8 @@ const buildFallbackHtml = (opts: {
           <h1 class="text-5xl font-bold leading-tight mt-4">${tagline}</h1>
           <p class="mt-6 text-lg text-white/85">${summary}</p>
           <div class="mt-8 flex flex-wrap gap-4">
-            <a href="#order" class="px-6 py-3 rounded-full bg-amber-500 text-slate-900 font-semibold hover:bg-amber-400">Order Online</a>
-            <a href="#reserve" class="px-6 py-3 rounded-full border border-white/40 text-white font-semibold hover:bg-white/20">Reserve a Table</a>
+            <a href="#order" class="${primaryButton}">Order Online</a>
+            <a href="#reserve" class="${secondaryButton}">Reserve a Table</a>
           </div>
         </div>
       </div>
@@ -283,17 +478,19 @@ const buildFallbackHtml = (opts: {
 
     <section id="about" class="py-16">
       <div class="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-10 items-center">
-        <div>
+        <div class="bg-white rounded-2xl shadow-lg p-8">
           <p class="text-sm uppercase tracking-[0.3em] text-amber-600">Our Story</p>
-          <h2 class="text-3xl font-bold mt-4">${name}</h2>
-          <p class="mt-5 text-slate-600 leading-relaxed">${summary}</p>
-          ${neighborhood ? `<p class="mt-4 text-slate-600">Neighborhood: ${neighborhood}</p>` : ''}
-          ${parking ? `<p class="mt-2 text-slate-600">Parking: ${parking}</p>` : ''}
+          <h2 class="text-3xl font-bold mt-3">${name}</h2>
+          <p class="mt-4 text-slate-600 leading-relaxed">${summary}</p>
+          <div class="mt-6 grid sm:grid-cols-2 gap-4 text-sm text-slate-600">
+            ${neighborhood ? `<div class="bg-slate-50 rounded-xl p-4">Neighborhood: ${neighborhood}</div>` : ''}
+            ${parking ? `<div class="bg-slate-50 rounded-xl p-4">Parking: ${parking}</div>` : ''}
+          </div>
         </div>
         <div class="grid grid-cols-2 gap-4">
-          ${galleryImages.slice(0, 4).map((img) => `
-            <div class="overflow-hidden rounded-2xl shadow">
-              <img src="${img.url}" alt="${img.alt}" class="w-full h-48 object-cover" loading="lazy" />
+          ${[getImage(1, 'Restaurant interior'), getImage(2, 'Dining room'), getImage(3, 'Chef plating'), getImage(4, 'Signature dish')].map((img) => `
+            <div class="overflow-hidden rounded-2xl shadow-lg">
+              <img src="${img.url}" alt="${img.alt}" class="w-full h-56 object-cover" loading="lazy" />
             </div>
           `).join('')}
         </div>
@@ -311,33 +508,73 @@ const buildFallbackHtml = (opts: {
           </div>
           <div class="hidden md:block text-sm text-slate-500">Ask about chef specials and fresh catches.</div>
         </div>
-        ${menuHTML || '<p class="text-slate-600">Menu details coming soon.</p>'}
+        <div class="grid lg:grid-cols-2 gap-8">
+          ${menuHTML || '<div class="bg-slate-50 rounded-2xl p-6 shadow-lg"><p class="text-slate-600">Menu details coming soon.</p></div>'}
+        </div>
       </div>
     </section>
 
-    <section id="order" class="py-16">
+    <section id="featured" class="py-16">
       <div class="max-w-6xl mx-auto px-6">
-        ${orderingSection || '<div class="p-8 bg-amber-50 rounded-2xl"><h3 class="text-2xl font-bold mb-2">Order Online</h3><p class="text-slate-600">Online ordering is coming soon. Call us to place an order.</p></div>'}
+        <div class="flex items-center justify-between gap-6 mb-8">
+          <div>
+            <p class="text-sm uppercase tracking-[0.3em] text-amber-600">Featured</p>
+            <h2 class="text-3xl font-bold mt-2">Signature Dishes</h2>
+          </div>
+          <div class="text-sm text-slate-500">Chef-driven selections crafted daily.</div>
+        </div>
+        <div class="grid md:grid-cols-3 gap-6">
+          ${[getImage(5, 'Featured dish'), getImage(6, 'Signature plate'), getImage(7, 'Chef special')].map((img, idx) => `
+            <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+              <div class="grid grid-rows-[1fr_auto] h-full">
+                <img src="${img.url}" alt="${img.alt}" class="w-full h-48 object-cover" loading="lazy" />
+                <div class="p-5">
+                  <h3 class="text-xl font-semibold">Chef Special ${idx + 1}</h3>
+                  <p class="mt-2 text-slate-600">Seasonal ingredients, plated with care and a modern twist.</p>
+                  <button class="mt-4 w-full py-2 rounded-lg bg-amber-500 text-slate-900 font-semibold hover:bg-amber-400 transition-all duration-300">Order This</button>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
       </div>
     </section>
 
-    <section id="reserve" class="py-16 bg-white">
-      <div class="max-w-6xl mx-auto px-6">
-        ${reservationsSection || '<div class="p-8 bg-slate-100 rounded-2xl"><h3 class="text-2xl font-bold mb-2">Reserve a Table</h3><p class="text-slate-600">Walk-ins welcome. Call ahead for large parties.</p></div>'}
+    <section id="experience" class="py-16 bg-white">
+      <div class="max-w-6xl mx-auto px-6 grid lg:grid-cols-2 gap-10 items-center">
+        <div class="grid grid-cols-2 gap-4 order-2 lg:order-1">
+          ${[getImage(8, 'Dining atmosphere'), getImage(9, 'Restaurant interior')].map((img) => `
+            <div class="overflow-hidden rounded-2xl shadow-lg">
+              <img src="${img.url}" alt="${img.alt}" class="w-full h-56 object-cover" loading="lazy" />
+            </div>
+          `).join('')}
+        </div>
+        <div class="order-1 lg:order-2 bg-white rounded-2xl shadow-lg p-8">
+          <p class="text-sm uppercase tracking-[0.3em] text-amber-600">Experience</p>
+          <h2 class="text-3xl font-bold mt-2">Warm, memorable dining</h2>
+          <p class="mt-4 text-slate-600">From the first sip to the final bite, we curate an atmosphere that feels elevated yet welcoming.</p>
+          <div class="mt-6 grid gap-4">
+            <div class="bg-slate-50 rounded-xl p-4 shadow">
+              <p class="font-semibold">“Absolutely unforgettable.”</p>
+              <p class="text-sm text-slate-600 mt-1">The ambiance and flavors were perfectly balanced.</p>
+            </div>
+            <div class="bg-slate-50 rounded-xl p-4 shadow">
+              <p class="font-semibold">“Best meal in the neighborhood.”</p>
+              <p class="text-sm text-slate-600 mt-1">Service, plating, and taste were all top-tier.</p>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
-
-    ${eventsSection}
-    ${cateringSection}
 
     <section id="hours" class="py-16">
-      <div class="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-10">
-        <div>
+      <div class="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-10 items-center">
+        <div class="bg-white rounded-2xl shadow-lg p-8">
           <p class="text-sm uppercase tracking-[0.3em] text-amber-600">Hours</p>
           <h2 class="text-3xl font-bold mt-2">Visit Us</h2>
-          <div class="mt-6 space-y-2">${hoursHTML || '<p class="text-slate-600">Hours available upon request.</p>'}</div>
+          <div class="mt-6 space-y-2">${hoursHTML || '<div class="bg-slate-50 rounded-xl p-4 text-slate-600">Hours available upon request.</div>'}</div>
         </div>
-        <div class="bg-white rounded-2xl shadow p-6">
+        <div class="bg-white rounded-2xl shadow-lg p-8">
           <p class="text-sm uppercase tracking-[0.3em] text-amber-600">Location</p>
           <h3 class="text-2xl font-bold mt-2">${address}, ${city}</h3>
           <p class="mt-4 text-slate-600">${phone}</p>
@@ -347,16 +584,114 @@ const buildFallbackHtml = (opts: {
       </div>
     </section>
 
-    <section id="location" class="py-16 bg-white">
+    <section id="order" class="py-16">
       <div class="max-w-6xl mx-auto px-6">
-        <p class="text-sm uppercase tracking-[0.3em] text-amber-600">Gallery</p>
-        <h2 class="text-3xl font-bold mt-2">A Taste of the Experience</h2>
-        <div class="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          ${galleryImages.map((img) => `
-            <div class="overflow-hidden rounded-2xl shadow">
-              <img src="${img.url}" alt="${img.alt}" class="w-full h-64 object-cover" loading="lazy" />
+        ${orderingSection || `
+        <div class="p-8 bg-amber-50 rounded-2xl">
+          <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div>
+              <h3 class="text-2xl font-bold mb-2">Order Online</h3>
+              <p class="text-slate-600">Choose your favorites and place a mock order.</p>
             </div>
-          `).join('')}
+            <a href="tel:${phone}" class="px-6 py-3 rounded-xl bg-amber-500 text-slate-900 font-semibold hover:bg-amber-400 transition-all duration-300 shadow-lg">Call ${phone}</a>
+          </div>
+          <div class="mt-8 grid md:grid-cols-2 gap-6">
+            <div class="bg-white rounded-xl p-5 shadow">
+              <p class="text-sm uppercase tracking-wider text-slate-500 mb-4">Popular Items</p>
+              <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="text-slate-700">House Special</span>
+                  <button class="px-3 py-1 rounded-full bg-slate-100 text-sm hover:bg-slate-200 transition-all duration-300">Add</button>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-slate-700">Chef’s Pasta</span>
+                  <button class="px-3 py-1 rounded-full bg-slate-100 text-sm hover:bg-slate-200 transition-all duration-300">Add</button>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-slate-700">Seasonal Salad</span>
+                  <button class="px-3 py-1 rounded-full bg-slate-100 text-sm hover:bg-slate-200 transition-all duration-300">Add</button>
+                </div>
+              </div>
+            </div>
+            <div class="bg-white rounded-xl p-5 shadow">
+              <p class="text-sm uppercase tracking-wider text-slate-500 mb-4">Order Details</p>
+              <div class="grid gap-3">
+                <input class="w-full border border-slate-200 rounded-lg px-3 py-2" placeholder="Name" />
+                <input class="w-full border border-slate-200 rounded-lg px-3 py-2" placeholder="Phone or Email" />
+                <select class="w-full border border-slate-200 rounded-lg px-3 py-2">
+                  <option>Pickup</option>
+                  <option>Delivery</option>
+                </select>
+                <button class="w-full py-2 rounded-xl bg-amber-500 text-slate-900 font-semibold hover:bg-amber-400 transition-all duration-300 shadow-lg">Place Mock Order</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        `}
+      </div>
+    </section>
+
+    <section id="reserve" class="py-16 bg-white">
+      <div class="max-w-6xl mx-auto px-6">
+        ${reservationsSection || `
+        <div class="p-8 bg-slate-100 rounded-2xl">
+          <h3 class="text-2xl font-bold mb-2">Reserve a Table</h3>
+          <p class="text-slate-600 mb-6">Pick a date and time to reserve your table.</p>
+          <div class="grid md:grid-cols-2 gap-6">
+            <div class="bg-white rounded-xl p-4 shadow">
+              <div class="text-sm uppercase tracking-wider text-slate-500 mb-3">Select Date</div>
+              <div class="grid grid-cols-7 gap-2 text-center text-xs text-slate-600">
+                ${['S','M','T','W','T','F','S'].map(d => `<div class="font-semibold text-slate-500">${d}</div>`).join('')}
+                ${Array.from({ length: 28 }).map((_, i) => `<div class="py-2 rounded-lg ${i === 10 ? 'bg-amber-500 text-white' : 'bg-slate-100'}">${i + 1}</div>`).join('')}
+              </div>
+            </div>
+            <div class="bg-white rounded-xl p-4 shadow">
+              <div class="text-sm uppercase tracking-wider text-slate-500 mb-3">Select Time</div>
+              <div class="grid grid-cols-3 gap-2">
+                ${['5:00 PM','5:30 PM','6:00 PM','6:30 PM','7:00 PM','7:30 PM','8:00 PM','8:30 PM','9:00 PM'].map(t => `<button class="py-2 rounded-lg border border-slate-200 text-sm hover:bg-amber-50 transition-all duration-300">${t}</button>`).join('')}
+              </div>
+              <div class="mt-4 grid gap-3">
+                <select class="w-full border border-slate-200 rounded-lg px-3 py-2">
+                  <option>Party size</option>
+                  ${[1,2,3,4,5,6,7,8].map(n => `<option>${n} guests</option>`).join('')}
+                </select>
+                <input class="w-full border border-slate-200 rounded-lg px-3 py-2" placeholder="Name" />
+                <input class="w-full border border-slate-200 rounded-lg px-3 py-2" placeholder="Phone or Email" />
+                <button class="w-full py-2 rounded-xl bg-amber-500 text-slate-900 font-semibold hover:bg-amber-400 transition-all duration-300 shadow-lg">Confirm Reservation</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        `}
+      </div>
+    </section>
+
+    ${eventsSection}
+    ${cateringSection}
+
+    <section id="contact" class="py-16">
+      <div class="max-w-4xl mx-auto px-6 text-center">
+        <p class="text-sm uppercase tracking-[0.3em] text-amber-600">Contact</p>
+        <h2 class="text-3xl font-bold mt-2">Get in touch</h2>
+        <p class="mt-4 text-slate-600">Questions, catering, or special requests? We would love to hear from you.</p>
+        <div class="mt-8 grid sm:grid-cols-2 gap-6 text-left">
+          <div class="bg-white rounded-2xl p-6 shadow">
+            <p class="text-xs uppercase tracking-[0.3em] text-amber-600">Restaurant</p>
+            <h3 class="text-xl font-semibold mt-2">${name}</h3>
+            <p class="mt-3 text-slate-600">${address}, ${city}</p>
+            ${neighborhood ? `<p class="text-slate-600">Neighborhood: ${neighborhood}</p>` : ''}
+            ${parking ? `<p class="text-slate-600">Parking: ${parking}</p>` : ''}
+          </div>
+          <div class="bg-white rounded-2xl p-6 shadow">
+            <p class="text-xs uppercase tracking-[0.3em] text-amber-600">Contact</p>
+            ${founderName ? `<p class="mt-2 text-slate-700">Owner: <span class="font-semibold">${founderName}</span></p>` : ''}
+            <p class="mt-2 text-slate-700">Phone: <a href="tel:${phone}" class="text-amber-700 font-semibold">${phone}</a></p>
+            <p class="text-slate-700">Email: <a href="mailto:${email}" class="text-amber-700 font-semibold">${email}</a></p>
+          </div>
+        </div>
+        <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+          <a href="tel:${phone}" class="px-6 py-3 rounded-xl bg-amber-500 text-slate-900 font-semibold hover:bg-amber-400 transition-all duration-300 shadow-lg">Call ${phone}</a>
+          <a href="mailto:${email}" class="px-6 py-3 rounded-xl border border-amber-300 text-amber-700 font-semibold hover:bg-amber-50 transition-all duration-300">Email ${email}</a>
         </div>
       </div>
     </section>
@@ -370,6 +705,16 @@ const buildFallbackHtml = (opts: {
         <p class="mt-6 text-xs text-slate-500">© ${new Date().getFullYear()} ${name}. All rights reserved.</p>
       </div>
     </footer>
+    <script>
+      document.querySelectorAll('a[href^="#"]').forEach((link) => {
+        link.addEventListener('click', (e) => {
+          const target = document.querySelector(link.getAttribute('href'));
+          if (!target) return;
+          e.preventDefault();
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      });
+    </script>
   </body>
 </html>`;
 };
@@ -466,18 +811,21 @@ app.post("/api/generate", async (req: express.Request, res: express.Response) =>
     const menuHTML = Object.entries(menuByCategory)
       .map(
         ([category, items]) => `
-      <div class="mb-12">
-        <h3 class="text-2xl font-serif font-bold text-slate-900 mb-6">${category}</h3>
-        <div class="space-y-4">
+      <div class="bg-slate-50 rounded-2xl p-6 shadow-lg">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-xl font-semibold text-slate-900">${category}</h3>
+          <span class="text-xs uppercase tracking-[0.2em] text-amber-600">Chef’s Picks</span>
+        </div>
+        <div class="grid gap-4">
           ${(items as any[])
             .map(
               (item) => `
-            <div class="flex justify-between items-start pb-4 border-b border-slate-200">
+            <div class="flex items-start justify-between gap-4 bg-white rounded-xl p-4 shadow">
               <div class="flex-1">
-                <h4 class="text-lg font-semibold text-slate-900">${item.name}</h4>
+                <h4 class="text-base font-semibold text-slate-900">${item.name}</h4>
                 <p class="text-slate-600 text-sm mt-1">${item.description}</p>
               </div>
-              <span class="text-lg font-semibold text-slate-900 ml-4">$${item.price.toFixed(2)}</span>
+              <span class="text-base font-semibold text-amber-600">$${item.price.toFixed(2)}</span>
             </div>
           `
             )
@@ -512,7 +860,7 @@ app.post("/api/generate", async (req: express.Request, res: express.Response) =>
       <div class="py-8 border-t border-orange-100">
         <h3 class="text-2xl font-bold text-slate-900 mb-4">Order Online</h3>
         <p class="text-slate-600 mb-6">Available on: ${platformNames}</p>
-        <a href="${onlineOrdering.customURL || '#'}" class="inline-block px-6 py-3 bg-orange-600 text-white font-semibold rounded-lg hover:bg-orange-700">Order Now</a>
+        <a href="${onlineOrdering.customURL || '#order'}" class="inline-block px-6 py-3 bg-orange-600 text-white font-semibold rounded-lg hover:bg-orange-700">Order Now</a>
       </div>
       `;
     }
@@ -525,7 +873,7 @@ app.post("/api/generate", async (req: express.Request, res: express.Response) =>
       <div class="py-8 border-t border-orange-100">
         <h3 class="text-2xl font-bold text-slate-900 mb-4">Make a Reservation</h3>
         <p class="text-slate-600 mb-6">Book your table on: ${platformNames}</p>
-        <a href="${reservations.url || 'tel:' + phone}" class="inline-block px-6 py-3 bg-amber-600 text-white font-semibold rounded-lg hover:bg-amber-700">Reserve Now</a>
+        <a href="${reservations.url || '#reserve'}" class="inline-block px-6 py-3 bg-amber-600 text-white font-semibold rounded-lg hover:bg-amber-700">Reserve Now</a>
       </div>
       `;
     }
@@ -571,7 +919,7 @@ app.post("/api/generate", async (req: express.Request, res: express.Response) =>
       </div>
     ` : '';
 
-    const imageAssets = buildImageAssets(images, useStockImages);
+    const imageAssets = await buildImageAssets(images, useStockImages, cuisineType, name, menu, style);
     const imageInstructions = imageAssets.length > 0
       ? `
 🖼️ IMAGE ASSETS (use these exact URLs, do not invent new ones):
@@ -631,9 +979,26 @@ ${imageInstructions}
 REQUIREMENTS:
 - Create a complete, valid HTML document (no markdown)
 - Use Tailwind CSS via CDN
-- Use the provided IMAGE ASSETS URLs. Ensure at least 4 images are visible on the page.
+- Use the provided IMAGE ASSETS URLs. Ensure at least 6–10 images are visible on the page.
+- Images must be cuisine-appropriate and high-quality (use only the provided URLs; do not invent or use placeholders).
+- Do not use any single image URL more than twice.
+- Focus ONLY on visual design and layout. Do NOT change functionality or data.
 - Mobile-responsive design
-- Include: Hero, Navigation, About Us, Full Menu (organized by category), Hours, Location/Map, Reservation/Order CTAs, Social Links, Footer
+- Include: Hero, Navigation, About Us, Full Menu (organized by category), Featured Dishes, Experience/Atmosphere, Hours, Order, Reservation, Contact, Footer
+- Section flow MUST be: Hero → About → Menu → Featured → Experience → Hours → Order → Reserve → Contact
+- Use modern layout patterns only: split layouts, grids, zig-zag alternation, and full-width hero with overlay.
+- STRICT: Never place an image directly below a block of text. No text→image vertical stacking unless inside a card/grid.
+- Do not create plain sections with just a paragraph. Every section must use cards, panels, or structured containers.
+- Every section must include: a heading, 2–4 lines of meaningful content, and supporting UI (cards, icons, images, lists).
+- Do NOT reuse the same layout for multiple sections; alternate between split, grid, and zig-zag.
+- Enforce a consistent design system: same spacing scale, same button styles, and a max of 2 fonts.
+- Use subtle animations (hover transitions) and premium visual details (soft gradients, shadows, rounded-2xl cards).
+- Add testimonials section (generate if not provided) within the Experience area.
+- Navigation must be sticky, clean, and visually separated (shadow or backdrop blur).
+- All navigation tabs MUST use anchor links (e.g., #home, #about, #menu, #hours, #order, #reserve, #contact) and every target section must exist with matching id attributes.
+- Do NOT create links to non-existent pages. Every button and nav item must scroll to a real section.
+- Add basic JavaScript for smooth scrolling for anchor links.
+- The reservation section must include: date selector (calendar grid or date input), 6–10 time slots, party size selector, and name + phone/email inputs.
 - Typography must be consistent and professional (limit to 2 complementary fonts).
 - Ensure strong contrast between text and background; if text sits on images, add a dark overlay or a solid background card.
 - Avoid any overlapping elements; no absolute positioning for text blocks unless paired with safe padding and overlays.
@@ -685,7 +1050,12 @@ Return ONLY raw HTML - no markdown code blocks, no explanations.`;
       cleanHtml.length < 1200 ||
       !/<body[^>]*>/i.test(cleanHtml) ||
       (!/<nav[^>]*>/i.test(cleanHtml) && !/<header[^>]*>/i.test(cleanHtml)) ||
-      (!/<section[^>]*>/i.test(cleanHtml) && !/<img\\s/i.test(cleanHtml));
+      (!/<section[^>]*>/i.test(cleanHtml) && !/<img\\s/i.test(cleanHtml)) ||
+      !/href=["']#home["']/i.test(cleanHtml) ||
+      !/id=["']home["']/i.test(cleanHtml) ||
+      !/id=["']order["']/i.test(cleanHtml) ||
+      !/id=["']reserve["']/i.test(cleanHtml) ||
+      !/id=["']contact["']/i.test(cleanHtml);
 
     if (looksInvalid) {
       console.warn('⚠️ Using fallback template due to low-quality HTML output.');
