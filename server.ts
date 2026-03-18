@@ -361,6 +361,50 @@ const ensureSmoothScrollScript = (html: string): string => {
   return `${html}\n${script}`;
 };
 
+const applyHeroBackground = (html: string, imageUrl?: string, instruction?: string): string => {
+  if (!imageUrl) return html;
+  const instructionText = (instruction || '').toLowerCase();
+  const wantsBackground =
+    instructionText.length === 0 || /background|hero|landing|banner|header|cover/.test(instructionText);
+  if (!wantsBackground) return html;
+
+  const applyToTag = (tag: string, attrs: string) => {
+    let updatedAttrs = attrs;
+    if (/class=/.test(updatedAttrs)) {
+      updatedAttrs = updatedAttrs.replace(
+        /class=["']([^"']*)["']/i,
+        (_match, cls) => `class="${cls} bg-cover bg-center"`
+      );
+    } else {
+      updatedAttrs = `${updatedAttrs} class="bg-cover bg-center"`;
+    }
+
+    if (/style=/.test(updatedAttrs)) {
+      updatedAttrs = updatedAttrs.replace(
+        /style=["']([^"']*)["']/i,
+        (_match, style) =>
+          `style="${style}; background-image: url('${imageUrl}'); background-size: cover; background-position: center; background-color: rgba(0,0,0,0.5); background-blend-mode: multiply;"`
+      );
+    } else {
+      updatedAttrs = `${updatedAttrs} style="background-image: url('${imageUrl}'); background-size: cover; background-position: center; background-color: rgba(0,0,0,0.5); background-blend-mode: multiply;"`;
+    }
+
+    return `<${tag}${updatedAttrs}>`;
+  };
+
+  const homeMatch = html.match(/<(section|header|div)([^>]*\sid=["']home["'][^>]*)>/i);
+  if (homeMatch) {
+    return html.replace(homeMatch[0], applyToTag(homeMatch[1], homeMatch[2]));
+  }
+
+  const headerMatch = html.match(/<(header)([^>]*)>/i);
+  if (headerMatch) {
+    return html.replace(headerMatch[0], applyToTag(headerMatch[1], headerMatch[2]));
+  }
+
+  return html;
+};
+
 const injectFallbackGallery = (html: string, assets: ImageAsset[]): string => {
   if (assets.length === 0) return html;
   if (/<img\s/i.test(html) || /background-image\s*:/i.test(html)) return html;
@@ -810,7 +854,9 @@ app.post("/api/generate", async (req: express.Request, res: express.Response) =>
       // Settings
       images,
       useStockImages,
-      customInstruction
+      customInstruction,
+      existingHtml,
+      assistantImage
     } = req.body;
 
     // Build menu section HTML
@@ -941,7 +987,25 @@ ${imageAssets.map((img) => `- ${img.role.toUpperCase()}: ${img.url} (alt: ${img.
 `
       : '';
 
-    const prompt = `Create a high-converting, professional restaurant website with the following details:
+    const hasEditContext = Boolean(customInstruction && existingHtml);
+
+    const prompt = hasEditContext
+      ? `You are an AI website editor inside a live preview environment.
+
+Your job is to EXECUTE the user's request immediately by editing ONLY the relevant section(s).
+Preserve everything else: layout, colors, spacing, typography, and all other sections.
+Do NOT regenerate or redesign the entire website.
+Return the FULL updated HTML document (no markdown, no explanations).
+
+If the request is about using an uploaded image or changing a background, do not alter any other sections.
+
+USER_REQUEST:
+${customInstruction}
+
+EXISTING_HTML:
+${existingHtml}
+`
+      : `Create a high-converting, professional restaurant website with the following details:
 
 🏪 RESTAURANT INFO:
 Name: ${name}
@@ -1031,7 +1095,7 @@ Return ONLY raw HTML - no markdown code blocks, no explanations.`;
     const response = await groq.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
       model: groqModel,
-      temperature: 1,
+      temperature: hasEditContext ? 0.3 : 1,
       max_tokens: 4096,
     });
     console.log('✅ Groq response received');
@@ -1053,6 +1117,7 @@ Return ONLY raw HTML - no markdown code blocks, no explanations.`;
     cleanHtml = ensureDesignSafetyStyles(cleanHtml, style);
     cleanHtml = ensureSmoothScrollScript(cleanHtml);
     cleanHtml = injectFallbackGallery(cleanHtml, imageAssets);
+    cleanHtml = applyHeroBackground(cleanHtml, assistantImage, customInstruction);
     
     console.log('🧹 Cleaned HTML length:', cleanHtml.length);
     
@@ -1073,31 +1138,36 @@ Return ONLY raw HTML - no markdown code blocks, no explanations.`;
       !/id=["']contact["']/i.test(cleanHtml);
 
     if (looksInvalid) {
-      console.warn('⚠️ Using fallback template due to low-quality HTML output.');
-      cleanHtml = buildFallbackHtml({
-        name,
-        cuisineType,
-        priceRange,
-        tagline: tagline || 'Delicious cuisine, unforgettable experience',
-        address,
-        city,
-        phone,
-        email,
-        neighborhood,
-        parking,
-        shortDescription,
-        description,
-        menuHTML,
-        hoursHTML,
-        orderingSection,
-        reservationsSection,
-        aboutSection,
-        cateringSection,
-        eventsSection,
-        socialHTML,
-        googleMapsLink,
-        imageAssets
-      });
+      if (hasEditContext && typeof existingHtml === 'string' && existingHtml.length > 0) {
+        console.warn('⚠️ Edit output invalid. Keeping existing HTML to avoid visual regression.');
+        cleanHtml = existingHtml;
+      } else {
+        console.warn('⚠️ Using fallback template due to low-quality HTML output.');
+        cleanHtml = buildFallbackHtml({
+          name,
+          cuisineType,
+          priceRange,
+          tagline: tagline || 'Delicious cuisine, unforgettable experience',
+          address,
+          city,
+          phone,
+          email,
+          neighborhood,
+          parking,
+          shortDescription,
+          description,
+          menuHTML,
+          hoursHTML,
+          orderingSection,
+          reservationsSection,
+          aboutSection,
+          cateringSection,
+          eventsSection,
+          socialHTML,
+          googleMapsLink,
+          imageAssets
+        });
+      }
     }
 
     res.json({ html: cleanHtml });
@@ -1106,6 +1176,51 @@ Return ONLY raw HTML - no markdown code blocks, no explanations.`;
     console.error("❌ Generation error:", error);
     const errorMessage = error instanceof Error ? error.message : String(error);
     res.status(500).json({ error: "Failed to generate website", details: errorMessage });
+  }
+});
+
+app.post("/api/assistant", async (req: express.Request, res: express.Response) => {
+  try {
+    const { messages, details, imageData } = req.body || {};
+
+    if (!Array.isArray(messages)) {
+      return res.status(400).json({ error: "Invalid payload", details: "messages must be an array" });
+    }
+
+    const sanitizedMessages = messages
+      .filter((msg: any) => msg && typeof msg.content === "string")
+      .slice(-12)
+      .map((msg: any) => ({
+        role: msg.role === "assistant" ? "assistant" : "user",
+        content: msg.content.trim(),
+      }))
+      .filter((msg: any) => msg.content.length > 0);
+
+    const context = details
+      ? `Business context:\nName: ${details.name || "Unknown"}\nType: ${details.type || "Unknown"}\nCuisine: ${details.cuisineType || "Not specified"}\nStyle: ${details.style || "Not specified"}\nTone: ${details.tone || "Not specified"}\nCity: ${details.city || "Not specified"}\nTagline: ${details.tagline || "Not specified"}`
+      : "Business context: Not provided.";
+
+    const systemPrompt = `You are an AI website editor inside a live preview environment.\nFor every user request, execute the change immediately and then respond with a short confirmation.\nDo not ask follow-up questions unless absolutely necessary.\nDo not provide suggestions or options unless the user explicitly asks.\nKeep replies under 1-2 sentences, direct, and action-based.\nIf an image is attached and the user references it, assume it should be applied to the requested section with a dark overlay and full-width cover.\nDo not claim to have performed actions you did not do.`;
+
+    const imageNote = imageData ? "An image was attached to the latest message." : "";
+
+    const response = await groq.chat.completions.create({
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "system", content: context },
+        ...(imageNote ? [{ role: "system", content: imageNote }] : []),
+        ...sanitizedMessages,
+      ],
+      model: groqModel,
+      temperature: 0.7,
+      max_tokens: 512,
+    });
+
+    const reply = response.choices[0]?.message?.content?.trim() || "";
+    res.json({ reply });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: "Failed to generate assistant reply", details: errorMessage });
   }
 });
 

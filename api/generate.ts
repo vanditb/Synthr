@@ -163,6 +163,50 @@ const ensureDesignSafetyStyles = (html: string, style?: string): string => {
   return html.replace(/<html[^>]*>/i, (match) => `${match}\n<head>\n  ${fontTags}${viewportTag}\n  ${safetyStyle}\n</head>`);
 };
 
+const applyHeroBackground = (html: string, imageUrl?: string, instruction?: string): string => {
+  if (!imageUrl) return html;
+  const instructionText = (instruction || '').toLowerCase();
+  const wantsBackground =
+    instructionText.length === 0 || /background|hero|landing|banner|header|cover/.test(instructionText);
+  if (!wantsBackground) return html;
+
+  const applyToTag = (tag: string, attrs: string) => {
+    let updatedAttrs = attrs;
+    if (/class=/.test(updatedAttrs)) {
+      updatedAttrs = updatedAttrs.replace(
+        /class=["']([^"']*)["']/i,
+        (_match, cls) => `class="${cls} bg-cover bg-center"`
+      );
+    } else {
+      updatedAttrs = `${updatedAttrs} class="bg-cover bg-center"`;
+    }
+
+    if (/style=/.test(updatedAttrs)) {
+      updatedAttrs = updatedAttrs.replace(
+        /style=["']([^"']*)["']/i,
+        (_match, style) =>
+          `style="${style}; background-image: url('${imageUrl}'); background-size: cover; background-position: center; background-color: rgba(0,0,0,0.5); background-blend-mode: multiply;"`
+      );
+    } else {
+      updatedAttrs = `${updatedAttrs} style="background-image: url('${imageUrl}'); background-size: cover; background-position: center; background-color: rgba(0,0,0,0.5); background-blend-mode: multiply;"`;
+    }
+
+    return `<${tag}${updatedAttrs}>`;
+  };
+
+  const homeMatch = html.match(/<(section|header|div)([^>]*\sid=["']home["'][^>]*)>/i);
+  if (homeMatch) {
+    return html.replace(homeMatch[0], applyToTag(homeMatch[1], homeMatch[2]));
+  }
+
+  const headerMatch = html.match(/<(header)([^>]*)>/i);
+  if (headerMatch) {
+    return html.replace(headerMatch[0], applyToTag(headerMatch[1], headerMatch[2]));
+  }
+
+  return html;
+};
+
 const injectFallbackGallery = (html: string, assets: ImageAsset[]): string => {
   if (assets.length === 0) return html;
   if (/<img\s/i.test(html) || /background-image\s*:/i.test(html)) return html;
@@ -423,6 +467,8 @@ export default async function handler(req: any, res: any) {
       images,
       useStockImages,
       customInstruction,
+      existingHtml,
+      assistantImage,
     } = req.body || {};
 
     const menuByCategory: Record<string, any[]> = {};
@@ -555,7 +601,25 @@ ${imageAssets.map((img) => `- ${img.role.toUpperCase()}: ${img.url} (alt: ${img.
 `
         : '';
 
-    const prompt = `Create a high-converting, professional restaurant website with the following details:
+    const hasEditContext = Boolean(customInstruction && existingHtml);
+
+    const prompt = hasEditContext
+      ? `You are an AI website editor inside a live preview environment.
+
+Your job is to EXECUTE the user's request immediately by editing ONLY the relevant section(s).
+Preserve everything else: layout, colors, spacing, typography, and all other sections.
+Do NOT regenerate or redesign the entire website.
+Return the FULL updated HTML document (no markdown, no explanations).
+
+If the request is about using an uploaded image or changing a background, do not alter any other sections.
+
+USER_REQUEST:
+${customInstruction}
+
+EXISTING_HTML:
+${existingHtml}
+`
+      : `Create a high-converting, professional restaurant website with the following details:
 
 🏪 RESTAURANT INFO:
 Name: ${name}
@@ -627,7 +691,7 @@ Return ONLY raw HTML - no markdown code blocks, no explanations.`;
     const response = await groq.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
       model: groqModel,
-      temperature: 1,
+      temperature: hasEditContext ? 0.3 : 1,
       max_tokens: 4096,
     });
 
@@ -645,6 +709,7 @@ Return ONLY raw HTML - no markdown code blocks, no explanations.`;
     cleanHtml = ensureTailwindCdn(cleanHtml);
     cleanHtml = ensureDesignSafetyStyles(cleanHtml, style);
     cleanHtml = injectFallbackGallery(cleanHtml, imageAssets);
+    cleanHtml = applyHeroBackground(cleanHtml, assistantImage, customInstruction);
 
     const looksInvalid =
       cleanHtml.length < 1200 ||
@@ -653,30 +718,34 @@ Return ONLY raw HTML - no markdown code blocks, no explanations.`;
       (!/<section[^>]*>/i.test(cleanHtml) && !/<img\s/i.test(cleanHtml));
 
     if (looksInvalid) {
-      cleanHtml = buildFallbackHtml({
-        name,
-        cuisineType,
-        priceRange,
-        tagline: tagline || 'Delicious cuisine, unforgettable experience',
-        address,
-        city,
-        phone,
-        email,
-        neighborhood,
-        parking,
-        shortDescription,
-        description,
-        menuHTML,
-        hoursHTML,
-        orderingSection,
-        reservationsSection,
-        aboutSection,
-        cateringSection,
-        eventsSection,
-        socialHTML,
-        googleMapsLink,
-        imageAssets,
-      });
+      if (hasEditContext && typeof existingHtml === 'string' && existingHtml.length > 0) {
+        cleanHtml = existingHtml;
+      } else {
+        cleanHtml = buildFallbackHtml({
+          name,
+          cuisineType,
+          priceRange,
+          tagline: tagline || 'Delicious cuisine, unforgettable experience',
+          address,
+          city,
+          phone,
+          email,
+          neighborhood,
+          parking,
+          shortDescription,
+          description,
+          menuHTML,
+          hoursHTML,
+          orderingSection,
+          reservationsSection,
+          aboutSection,
+          cateringSection,
+          eventsSection,
+          socialHTML,
+          googleMapsLink,
+          imageAssets,
+        });
+      }
     }
 
     res.status(200).json({ html: cleanHtml });

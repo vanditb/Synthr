@@ -1,43 +1,34 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, UtensilsCrossed, Clock, Sparkles } from 'lucide-react';
 
-const ScrambleText = ({ text }: { text: string }) => {
+const TypingText = ({ text }: { text: string }) => {
   const [displayText, setDisplayText] = useState('');
-  const chars = '!<>-_\\/[]{}—=+*^?#________';
-
-  const scramble = useCallback(() => {
-    let iteration = 0;
-    const interval = setInterval(() => {
-      setDisplayText(prev => 
-        text.split('')
-          .map((char, index) => {
-            if (index < iteration) {
-              return text[index];
-            }
-            return chars[Math.floor(Math.random() * chars.length)];
-          })
-          .join('')
-      );
-
-      if (iteration >= text.length) {
-        clearInterval(interval);
-      }
-
-      iteration += 1 / 2;
-    }, 80);
-
-    return () => clearInterval(interval);
-  }, [text]);
 
   useEffect(() => {
-    const cleanup = scramble();
-    return () => {
-      if (typeof cleanup === 'function') cleanup();
-    };
-  }, [scramble]);
+    let index = 0;
+    let timeout: ReturnType<typeof setTimeout>;
 
-  return <span>{displayText || ' '}</span>;
+    const type = () => {
+      setDisplayText(text.slice(0, index));
+      if (index <= text.length) {
+        index += 1;
+        timeout = setTimeout(type, 90);
+      }
+    };
+
+    type();
+    return () => {
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [text]);
+
+  return (
+    <span className="inline-flex items-center">
+      {displayText || ' '}
+      <span className="inline-block w-[2px] h-[1em] bg-amber-600 align-middle ml-1 animate-pulse" />
+    </span>
+  );
 };
 
 export const Landing: React.FC = () => {
@@ -154,7 +145,7 @@ export const Landing: React.FC = () => {
           <h1 className="text-5xl sm:text-7xl font-bold tracking-tight text-stone-900 mb-8 leading-[1.1] font-serif">
             Your restaurant, <br className="sm:hidden" />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-600">
-              online in <ScrambleText text="seconds." />
+              online in <TypingText text="seconds." />
             </span>
           </h1>
           

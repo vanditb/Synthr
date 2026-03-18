@@ -20,15 +20,21 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             </div>
             <span className="font-bold text-xl tracking-tight text-stone-900">Synthr</span>
           </Link>
-          <div className="flex gap-4">
-             {location.pathname !== '/create' && (
-                <Link 
-                  to="/create" 
-                  className="bg-gradient-to-r from-orange-600 to-amber-600 text-sm font-semibold text-white px-6 py-2.5 rounded-full transition-all hover:scale-105 active:scale-95 shadow-lg shadow-orange-200"
-                >
-                  Create Website
-                </Link>
-             )}
+          <div className="flex items-center gap-4">
+            <Link
+              to="/about"
+              className="text-sm font-semibold text-stone-700 hover:text-stone-900 transition"
+            >
+              About
+            </Link>
+            {location.pathname !== '/create' && (
+              <Link
+                to="/create"
+                className="bg-gradient-to-r from-orange-600 to-amber-600 text-sm font-semibold text-white px-6 py-2.5 rounded-full transition-all hover:scale-105 active:scale-95 shadow-lg shadow-orange-200"
+              >
+                Create Website
+              </Link>
+            )}
           </div>
         </div>
       </nav>

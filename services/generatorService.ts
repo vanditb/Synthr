@@ -3,7 +3,12 @@ import { BusinessDetails } from '../types';
 /**
  * Calls the backend API to generate HTML for a website.
  */
-export const generateWebsiteHtml = async (details: BusinessDetails, customInstruction?: string): Promise<string> => {
+export const generateWebsiteHtml = async (
+  details: BusinessDetails,
+  customInstruction?: string,
+  existingHtml?: string,
+  assistantImage?: string
+): Promise<string> => {
   try {
     console.log('🚀 Starting website generation...');
     let response: Response;
@@ -67,7 +72,9 @@ export const generateWebsiteHtml = async (details: BusinessDetails, customInstru
           // Images & Settings
           images: details.images,
           useStockImages: details.useStockImages,
-          customInstruction: customInstruction
+          customInstruction: customInstruction,
+          existingHtml: existingHtml,
+          assistantImage: assistantImage
         })
       });
     } catch (err) {

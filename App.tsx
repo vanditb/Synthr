@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Landing } from './pages/Landing';
+import { About } from './pages/About';
 import { Builder } from './pages/Builder';
 import { Preview } from './pages/Preview';
 import { BusinessDetails } from './types';
@@ -14,6 +15,7 @@ function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/about" element={<About />} />
           <Route path="/create" element={<Builder setDetails={setBusinessDetails} />} />
           <Route path="/preview" element={<Preview details={businessDetails} />} />
         </Routes>
