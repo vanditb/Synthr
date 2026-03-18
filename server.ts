@@ -105,7 +105,6 @@ const defaultStockImagePool: Record<ImageAsset['role'], ImageAsset[]> = {
   logo: []
 };
 
-const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
 const PEXELS_API_KEY = process.env.PEXELS_API_KEY;
 
 type ImageQuery = { role: ImageAsset['role']; query: string };
@@ -141,21 +140,6 @@ const buildSearchQueries = (
   return queries;
 };
 
-const searchUnsplash = async (query: string, perPage: number): Promise<ImageAsset[]> => {
-  if (!UNSPLASH_ACCESS_KEY) return [];
-  const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=${perPage}&orientation=landscape`;
-  const res = await fetch(url, { headers: { Authorization: `Client-ID ${UNSPLASH_ACCESS_KEY}` } });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return (data?.results || [])
-    .map((item: any) => ({
-      role: 'food',
-      url: item?.urls?.regular || item?.urls?.full,
-      alt: item?.alt_description || item?.description || query
-    }))
-    .filter((img: ImageAsset) => Boolean(img.url));
-};
-
 const searchPexels = async (query: string, perPage: number): Promise<ImageAsset[]> => {
   if (!PEXELS_API_KEY) return [];
   const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${perPage}&orientation=landscape`;
@@ -178,9 +162,6 @@ const collectApiImages = async (queries: ImageQuery[]): Promise<ImageAsset[]> =>
     let candidates: ImageAsset[] = [];
     try {
       candidates = await searchPexels(query.query, 6);
-      if (candidates.length === 0) {
-        candidates = await searchUnsplash(query.query, 6);
-      }
     } catch (_err) {
       candidates = [];
     }
@@ -316,6 +297,13 @@ const ensureDesignSafetyStyles = (html: string, style?: string): string => {
     img, video { max-width: 100%; height: auto; }
     body { overflow-x: hidden; }
     header { position: relative; }
+    header nav {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: blur(8px);
+      background: rgba(15, 23, 42, 0.6);
+    }
     header::before {
       content: "";
       position: absolute;
@@ -345,6 +333,32 @@ const ensureDesignSafetyStyles = (html: string, style?: string): string => {
     return html.replace(/<head[^>]*>/i, (match) => `${match}\n  ${fontTags}${viewportTag}\n  ${safetyStyle}`);
   }
   return html.replace(/<html[^>]*>/i, (match) => `${match}\n<head>\n  ${fontTags}${viewportTag}\n  ${safetyStyle}\n</head>`);
+};
+
+const ensureSmoothScrollScript = (html: string): string => {
+  if (/data-synthr-scroll/i.test(html)) return html;
+  const script = `
+  <script data-synthr-scroll>
+    document.querySelectorAll('a[href]').forEach((link) => {
+      const href = link.getAttribute('href') || '';
+      if (!href.startsWith('#')) return;
+      link.addEventListener('click', (e) => {
+        const target = document.querySelector(href);
+        if (!target) {
+          const fallback = document.querySelector('#home') || document.body;
+          e.preventDefault();
+          fallback.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return;
+        }
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+  </script>`;
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, `${script}\n</body>`);
+  }
+  return `${html}\n${script}`;
 };
 
 const injectFallbackGallery = (html: string, assets: ImageAsset[]): string => {
@@ -705,7 +719,7 @@ const buildFallbackHtml = (opts: {
         <p class="mt-6 text-xs text-slate-500">© ${new Date().getFullYear()} ${name}. All rights reserved.</p>
       </div>
     </footer>
-    <script>
+    <script data-synthr-scroll>
       document.querySelectorAll('a[href^="#"]').forEach((link) => {
         link.addEventListener('click', (e) => {
           const target = document.querySelector(link.getAttribute('href'));
@@ -1037,6 +1051,7 @@ Return ONLY raw HTML - no markdown code blocks, no explanations.`;
 
     cleanHtml = ensureTailwindCdn(cleanHtml);
     cleanHtml = ensureDesignSafetyStyles(cleanHtml, style);
+    cleanHtml = ensureSmoothScrollScript(cleanHtml);
     cleanHtml = injectFallbackGallery(cleanHtml, imageAssets);
     
     console.log('🧹 Cleaned HTML length:', cleanHtml.length);
