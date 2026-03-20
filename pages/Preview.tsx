@@ -119,7 +119,7 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
 
     if (generationMeta?.source === 'fallback') {
       return {
-        tone: 'bg-amber-500/10 text-amber-100 border-amber-500/20',
+        tone: 'bg-slate-950 text-white border-slate-900',
         label: 'Fallback draft',
         description: 'The model response needed repair, so we showed a safe draft instead.',
       };

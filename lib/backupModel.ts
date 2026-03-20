@@ -33,7 +33,15 @@ export const generateWithGeminiBackup = async ({
     throw new Error('GEMINI_API_KEY is not configured');
   }
 
-  const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  const model = process.env.GEMINI_MODEL || 'gemini-1.5-pro';
+  const combinedPrompt = `${systemPrompt}
+
+Follow the rules above exactly.
+
+${userPrompt}
+
+Return only the final raw HTML document.`;
+
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
@@ -42,18 +50,16 @@ export const generateWithGeminiBackup = async ({
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: systemPrompt }],
-        },
         contents: [
           {
             role: 'user',
-            parts: [{ text: userPrompt }],
+            parts: [{ text: combinedPrompt }],
           },
         ],
         generationConfig: {
           temperature,
           maxOutputTokens: maxTokens,
+          responseMimeType: 'text/plain',
         },
       }),
     }
