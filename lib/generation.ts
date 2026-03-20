@@ -1871,6 +1871,7 @@ export const buildGenerationPrompt = (payload: GenerationPayload): string => {
     reservations,
     socialLinks,
   } = payload;
+  const imageAssets = sections.imageAssets || [];
 
   const hasEditContext = Boolean(customInstruction && existingHtml);
 
@@ -1943,11 +1944,18 @@ ${socialLinks?.instagram ? `Instagram: ${socialLinks.instagram}` : ''}
 ${socialLinks?.tiktok ? `TikTok: ${socialLinks.tiktok}` : ''}
 ${socialLinks?.googleReviews ? `Google reviews: ${socialLinks.googleReviews}` : ''}
 
+Image assets:
+${imageAssets.length
+  ? imageAssets.map((img) => `- ${img.role}: ${img.url} (alt: ${img.alt})`).join('\n')
+  : '- No image assets available. Do not invent image URLs.'}
+
 Non-negotiable rules:
 - Return only raw HTML. No markdown.
 - Use the user's facts exactly where provided.
 - Do not invent menu items, addresses, phone numbers, hours, reservation platforms, or awards.
 - Use only the provided menu items.
+- Use only the provided image asset URLs when adding images.
+- Do not invent, fetch, or hallucinate image URLs.
 - Use semantic HTML.
 - Use Tailwind CDN.
 - Internal navigation must use valid in-page anchors only.
@@ -1972,6 +1980,7 @@ Art direction:
 - Use layered surfaces, soft shadows, subtle dividers, and refined CTA hierarchy.
 - Use asymmetric or split layouts where appropriate.
 - Include at least one large image-led section that feels premium.
+- Use the provided image assets intentionally: one strong hero image and a few supporting images with varied aspect ratios.
 - Give the menu a more designed presentation with clear pricing and spacing.
 - Desktop should feel polished and expansive, while mobile should collapse cleanly.
 - Use tasteful microinteractions only if they can be expressed in simple CSS and do not harm readability.
