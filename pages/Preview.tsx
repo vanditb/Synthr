@@ -4,6 +4,7 @@ import { BusinessDetails } from '../types';
 import { generateWebsiteHtml } from '../services/generatorService';
 import { requestAssistantResponse } from '../services/assistantService';
 import { ArrowLeft, Send, Sparkles, RefreshCw, Smartphone, Monitor, Loader2, Upload, X } from 'lucide-react';
+import type { GenerationMeta } from '../lib/generation';
 
 export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details }) => {
   const navigate = useNavigate();
@@ -12,6 +13,7 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
   const [isUpdating, setIsUpdating] = useState(false);
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [error, setError] = useState<string | null>(null);
+  const [generationMeta, setGenerationMeta] = useState<GenerationMeta | null>(null);
   const [messages, setMessages] = useState<
     { id: string; role: 'user' | 'assistant'; content: string; imageUrl?: string }[]
   >([
@@ -34,8 +36,11 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
   const latestGenerationIdRef = useRef(0);
   const generatedForDetailsRef = useRef<string | null>(null);
 
-  const performGeneration = async (instruction?: string, assistantImage?: string | null) => {
-    if (!details) return;
+  const performGeneration = async (
+    instruction?: string,
+    assistantImage?: string | null
+  ): Promise<{ ok: boolean; meta: GenerationMeta | null }> => {
+    if (!details) return { ok: false, meta: null };
     const generationId = ++latestGenerationIdRef.current;
     setIsUpdating(true);
     setError(null);
@@ -44,24 +49,27 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
       console.log('Starting generation...');
       const result = await generateWebsiteHtml(details, instruction, html, assistantImage || undefined);
       if (generationId !== latestGenerationIdRef.current) {
-        return;
+        return { ok: false, meta: null };
       }
-      console.log('Generation complete, HTML length:', result?.length);
-      setHtml(result);
+      console.log('Generation complete, HTML length:', result.html?.length);
+      setHtml(result.html);
+      setGenerationMeta(result.meta ?? null);
       setError(null);
+      return { ok: true, meta: result.meta ?? null };
     } catch (err) {
       if (generationId !== latestGenerationIdRef.current) {
-        return;
+        return { ok: false, meta: null };
       }
       const errorMsg = err instanceof Error ? err.message : String(err);
       console.error('Generation failed:', errorMsg);
       setError(errorMsg);
-      setHtml('');
+      setGenerationMeta(null);
     } finally {
       if (generationId === latestGenerationIdRef.current) {
         setIsUpdating(false);
       }
     }
+    return { ok: false, meta: null };
   };
 
   useEffect(() => {
@@ -91,6 +99,50 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, isAssistantTyping]);
+
+  const getGenerationStatus = () => {
+    if (error) {
+      return {
+        tone: 'bg-rose-500/10 text-rose-200 border-rose-500/20',
+        label: 'Update failed',
+        description: 'We kept your last working preview.',
+      };
+    }
+
+    if (isUpdating) {
+      return {
+        tone: 'bg-white/5 text-white/70 border-white/10',
+        label: 'Updating preview',
+        description: 'Applying your latest changes.',
+      };
+    }
+
+    if (generationMeta?.source === 'fallback') {
+      return {
+        tone: 'bg-amber-500/10 text-amber-100 border-amber-500/20',
+        label: 'Fallback draft',
+        description: 'The model response needed repair, so we showed a safe draft instead.',
+      };
+    }
+
+    if (generationMeta?.source === 'existing') {
+      return {
+        tone: 'bg-amber-500/10 text-amber-100 border-amber-500/20',
+        label: 'Kept last draft',
+        description: 'The latest edit did not validate, so we kept the previous version.',
+      };
+    }
+
+    if (generationMeta?.source === 'model') {
+      return {
+        tone: 'bg-emerald-500/10 text-emerald-100 border-emerald-500/20',
+        label: 'Preview ready',
+        description: 'You are viewing the latest generated version.',
+      };
+    }
+
+    return null;
+  };
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -159,11 +211,26 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
       : Promise.resolve();
 
     try {
-      const [assistantResult] = await Promise.allSettled([assistantPromise, updatePromise]);
+      const [assistantResult, updateResult] = await Promise.allSettled([assistantPromise, updatePromise]);
       const assistantReply = assistantResult.status === 'fulfilled' ? assistantResult.value : '';
-      const replyText =
-        assistantReply ||
-        'I have queued the update. If you want anything else adjusted, tell me the section or style to change.';
+      const updateOutcome = updateResult.status === 'fulfilled' ? updateResult.value : { ok: false, meta: null };
+      const updateMeta = updateOutcome.meta;
+      const updateFailed = !updateOutcome.ok;
+
+      let replyText = assistantReply;
+      if (updateFailed) {
+        replyText =
+          'I could not apply that change cleanly, so I kept your last working preview. Try a more specific request or retry once.';
+      } else if (updateMeta?.source === 'fallback') {
+        replyText =
+          'I updated the preview, but the result needed a safe fallback draft. If you want, I can tighten one section at a time.';
+      } else if (updateMeta?.source === 'existing') {
+        replyText =
+          'I tried the change, but it did not validate cleanly, so I kept the last working version.';
+      } else if (!replyText) {
+        replyText = 'Updated the preview. Tell me what you want to change next.';
+      }
+
       setMessages((prev) => [
         ...prev,
         { id: `assistant-${Date.now()}`, role: 'assistant', content: replyText },
@@ -204,6 +271,8 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
     );
   }
 
+  const generationStatus = getGenerationStatus();
+
   return (
     <div className="flex h-screen flex-col md:flex-row overflow-hidden bg-slate-50">
       {/* LEFT PANEL: Preview */}
@@ -230,6 +299,14 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
               <Smartphone size={18} /> Mobile
             </button>
           </div>
+          <button
+            onClick={() => performGeneration()}
+            disabled={isUpdating}
+            className="hidden md:inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={isUpdating ? 'animate-spin' : ''} />
+            Refresh draft
+          </button>
         </div>
 
         {/* Iframe Container */}
@@ -304,6 +381,12 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
 
         {/* Chat / Request Area */}
         <div className="flex-1 p-6 overflow-y-auto">
+          {generationStatus ? (
+            <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm ${generationStatus.tone}`}>
+              <div className="font-semibold">{generationStatus.label}</div>
+              <div className="mt-1 text-xs opacity-85">{generationStatus.description}</div>
+            </div>
+          ) : null}
           <div className="flex items-center gap-2 text-indigo-800 font-semibold mb-4">
             <Sparkles size={16} />
             <span>AI Assistant</span>
@@ -346,22 +429,24 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
 
           <div className="mt-8 space-y-3">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Quick Suggestions</p>
-            {[
-              'Improve the menu layout with cards',
-              'Make the hero section more dramatic',
-              'Add a chef spotlight section',
-              'Switch to warmer colors',
-              'Make it minimal and modern',
-            ].map((suggestion) => (
-              <button
-                key={suggestion}
-                disabled={isUpdating || isAssistantTyping}
-                onClick={() => setRequest(suggestion)}
-                className="block w-full text-left px-4 py-3 rounded-lg border border-slate-100 text-sm text-slate-600 hover:bg-slate-50 hover:border-slate-200 transition disabled:opacity-50"
-              >
-                "{suggestion}"
-              </button>
-            ))}
+            <div className="flex flex-wrap gap-2">
+              {[
+                'Improve the menu layout with cards',
+                'Make the first section feel more premium',
+                'Add a chef spotlight section',
+                'Switch to warmer colors',
+                'Make it minimal and modern',
+              ].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  disabled={isUpdating || isAssistantTyping}
+                  onClick={() => setRequest(suggestion)}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -429,6 +514,7 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
               />
             </div>
             {uploadError && <p className="text-xs text-rose-600">{uploadError}</p>}
+            <p className="text-[11px] text-slate-400">Press Cmd/Ctrl + Enter to send.</p>
           </div>
 
           <button

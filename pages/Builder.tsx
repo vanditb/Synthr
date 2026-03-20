@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Check, Loader2, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
+import { Check, Plus, Trash2, Upload } from 'lucide-react';
 import {
   BusinessDetails,
   BusinessType,
@@ -15,6 +15,9 @@ import {
   RestaurantTone,
   WebsiteStyle,
 } from '../types';
+import { BuilderReviewSummary } from '../components/builder/BuilderReviewSummary';
+import { BuilderStepActions } from '../components/builder/BuilderStepActions';
+import { BuilderStepProgress } from '../components/builder/BuilderStepProgress';
 
 const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -164,6 +167,17 @@ const parseCommaList = (value: string) =>
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+
+const dedupeMenuItems = (items: MenuItem[]) => {
+  const seen = new Set<string>();
+
+  return items.filter((item) => {
+    const key = `${item.name.trim().toLowerCase()}|${item.category.trim().toLowerCase()}`;
+    if (!item.name.trim() || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
 
 const imageLabelByType: Record<ImageType, string> = {
   food: 'Food photos',
@@ -369,16 +383,30 @@ export const Builder: React.FC<{ setDetails: (d: BusinessDetails) => void }> = (
 
   const reviewWarnings = useMemo(() => {
     const warnings: string[] = [];
+    const filledHours = Object.values(formData.location.hours).filter((value) => value.trim()).length;
 
     if (!formData.brand.summary.trim()) warnings.push('Add a short brand summary.');
+    if (formData.brand.summary.trim().length > 0 && formData.brand.summary.trim().length < 45) {
+      warnings.push('Make your summary a little more specific so the site feels less generic.');
+    }
     if (validMenuItems.length < 3) warnings.push('Add at least 3 menu items for a stronger first draft.');
     if (!formData.location.phone.trim()) warnings.push('Add a phone number.');
     if (!formData.location.address.trim() || !formData.location.city.trim()) warnings.push('Add your address and city.');
+    if (filledHours < 3) warnings.push('Add a few opening hours so the site feels complete.');
     if (formData.primaryCta === 'reservations' && !formData.reservations.enabled) {
       warnings.push('Reservations is your main CTA, but reservations are not enabled.');
     }
     if (formData.primaryCta === 'online-orders' && !formData.ordering.enabled) {
       warnings.push('Online orders is your main CTA, but ordering is not enabled.');
+    }
+    if (formData.reservations.enabled && formData.reservations.provider === 'custom' && !formData.reservations.url?.trim()) {
+      warnings.push('Add your reservation link so the main action works on the generated site.');
+    }
+    if (formData.ordering.enabled && formData.ordering.provider === 'custom' && !formData.ordering.url?.trim()) {
+      warnings.push('Add your ordering link so customers have somewhere to click.');
+    }
+    if (!formData.images.length && !formData.useStockImages) {
+      warnings.push('Upload a few photos or turn stock images back on.');
     }
 
     return warnings;
@@ -604,7 +632,7 @@ export const Builder: React.FC<{ setDetails: (d: BusinessDetails) => void }> = (
 
     setFormData((prev) => ({
       ...prev,
-      menu: [...prev.menu.filter((item) => item.name.trim()), ...parsed],
+      menu: dedupeMenuItems([...prev.menu.filter((item) => item.name.trim()), ...parsed]),
     }));
   };
 
@@ -629,7 +657,7 @@ export const Builder: React.FC<{ setDetails: (d: BusinessDetails) => void }> = (
 
     setFormData((prev) => ({
       ...prev,
-      menu: [...prev.menu.filter((item) => item.name.trim()), ...parsed],
+      menu: dedupeMenuItems([...prev.menu.filter((item) => item.name.trim()), ...parsed]),
     }));
     setMenuBulkPaste('');
     setShowBulkPaste(false);
@@ -702,17 +730,44 @@ export const Builder: React.FC<{ setDetails: (d: BusinessDetails) => void }> = (
       if (!formData.name.trim() || !formData.cuisineType.trim() || !formData.brand.summary.trim()) {
         return 'Add your name, cuisine, and short summary.';
       }
+      if (formData.brand.summary.trim().length < 30) {
+        return 'Add a slightly more descriptive summary so the first draft feels specific to your restaurant.';
+      }
     }
 
     if (stepId === 'menu') {
-      if (validMenuItems.length < 1) {
-        return 'Add at least one complete menu item.';
+      const hasImportedSource = Boolean(formData.menuSourceText?.trim() || formData.menuSourceImages?.length);
+      if (validMenuItems.length < 1 && !hasImportedSource) {
+        return 'Add at least one complete menu item, paste menu text, or upload a menu image.';
+      }
+    }
+
+    if (stepId === 'operations') {
+      if (formData.reservations.enabled) {
+        if (formData.reservations.provider === 'none') {
+          return 'Choose how reservations work or turn reservations off for now.';
+        }
+        if (formData.reservations.provider === 'custom' && !formData.reservations.url?.trim()) {
+          return 'Add your reservation link or choose a different reservation method.';
+        }
+      }
+
+      if (formData.ordering.enabled) {
+        if (formData.ordering.provider === 'none') {
+          return 'Choose how online ordering works or turn online ordering off for now.';
+        }
+        if (formData.ordering.provider === 'custom' && !formData.ordering.url?.trim()) {
+          return 'Add your ordering link or choose a different ordering method.';
+        }
       }
     }
 
     if (stepId === 'location') {
       if (!formData.location.address.trim() || !formData.location.city.trim() || !formData.location.phone.trim()) {
         return 'Add your address, city, and phone number.';
+      }
+      if (!Object.values(formData.location.hours).some((value) => value.trim())) {
+        return 'Add at least one set of opening hours.';
       }
     }
 
@@ -1365,164 +1420,29 @@ export const Builder: React.FC<{ setDetails: (d: BusinessDetails) => void }> = (
     }
 
     return (
-      <div className="space-y-5">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-          <div className="space-y-3 text-sm text-white/72">
-            <div className="flex justify-between gap-4 border-b border-white/8 pb-3">
-              <span className="text-white/45">Restaurant</span>
-              <span>{formData.name || 'Not added'}</span>
-            </div>
-            <div className="flex justify-between gap-4 border-b border-white/8 pb-3">
-              <span className="text-white/45">Cuisine</span>
-              <span>{formData.cuisineType || 'Not added'}</span>
-            </div>
-            <div className="flex justify-between gap-4 border-b border-white/8 pb-3">
-              <span className="text-white/45">Menu items</span>
-              <span>{validMenuItems.length}</span>
-            </div>
-            <div className="flex justify-between gap-4 border-b border-white/8 pb-3">
-              <span className="text-white/45">Main CTA</span>
-              <span>{formData.primaryCta}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span className="text-white/45">Images</span>
-              <span>{formData.images.length || 0}</span>
-            </div>
-          </div>
-        </div>
-
-        {reviewWarnings.length ? (
-          <div className="space-y-3">
-            {reviewWarnings.map((warning) => (
-              <div key={warning} className="rounded-2xl border border-orange-400/20 bg-orange-400/10 px-4 py-3 text-sm text-orange-100/88">
-                {warning}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100/90">
-            Looks good. You have enough detail for a strong first draft.
-          </div>
-        )}
-
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-          <button
-            type="button"
-            onClick={() => setShowMoreDetails((prev) => !prev)}
-            className="text-sm font-medium text-white/78 transition hover:text-white"
-          >
-            {showMoreDetails ? 'Hide extra details' : 'Add more details'}
-          </button>
-
-          {showMoreDetails ? (
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <input
-                value={formData.brand.story || ''}
-                onChange={(event) => updateBrand('story', event.target.value)}
-                className={`${inputClassName} sm:col-span-2`}
-                placeholder="Optional story"
-              />
-              <input
-                value={formData.advanced?.founderName || ''}
-                onChange={(event) => updateAdvanced('founderName', event.target.value)}
-                className={inputClassName}
-                placeholder="Founder or chef name"
-              />
-              <input
-                type="number"
-                value={formData.advanced?.yearFounded ?? ''}
-                onChange={(event) => updateAdvanced('yearFounded', event.target.value ? Number(event.target.value) : undefined)}
-                className={inputClassName}
-                placeholder="Year founded"
-              />
-              <input
-                value={formData.advanced?.neighborhood || ''}
-                onChange={(event) => updateAdvanced('neighborhood', event.target.value)}
-                className={inputClassName}
-                placeholder="Neighborhood"
-              />
-              <input
-                value={formData.advanced?.parking || ''}
-                onChange={(event) => updateAdvanced('parking', event.target.value)}
-                className={inputClassName}
-                placeholder="Parking"
-              />
-              <textarea
-                value={formData.advanced?.weeklySpecials || ''}
-                onChange={(event) => updateAdvanced('weeklySpecials', event.target.value)}
-                className={`${inputClassName} min-h-[96px] resize-none sm:col-span-2`}
-                placeholder="Weekly specials or events"
-              />
-              <input
-                value={formData.advanced?.cateringEmail || ''}
-                onChange={(event) => updateAdvanced('cateringEmail', event.target.value)}
-                className={inputClassName}
-                placeholder="Catering email"
-              />
-              <input
-                type="number"
-                value={formData.advanced?.privateEventCapacity ?? ''}
-                onChange={(event) =>
-                  updateAdvanced('privateEventCapacity', event.target.value ? Number(event.target.value) : undefined)
-                }
-                className={inputClassName}
-                placeholder="Private event capacity"
-              />
-              <textarea
-                value={(formData.advanced?.awards || []).join(', ')}
-                onChange={(event) => updateAdvanced('awards', parseCommaList(event.target.value))}
-                className={`${inputClassName} min-h-[96px] resize-none sm:col-span-2`}
-                placeholder="Awards or press"
-              />
-            </div>
-          ) : null}
-        </div>
-      </div>
+      <BuilderReviewSummary
+        formData={formData}
+        validMenuItemsCount={validMenuItems.length}
+        reviewWarnings={reviewWarnings}
+        showMoreDetails={showMoreDetails}
+        setShowMoreDetails={setShowMoreDetails}
+        updateBrand={updateBrand}
+        updateAdvanced={updateAdvanced}
+        parseCommaList={parseCommaList}
+        inputClassName={inputClassName}
+      />
     );
   };
-
-  const progress = ((currentStep + 1) / stepConfig.length) * 100;
 
   return (
     <div className="min-h-screen bg-[#09090d] px-4 py-10 text-white sm:px-6">
       <div className="mx-auto max-w-3xl">
-        <div className="mb-8 space-y-3">
-          <div className="flex items-center justify-between text-sm text-white/52">
-            <span>
-              Step {currentStep + 1} of {stepConfig.length}
-            </span>
-            <span>{current.optional && current.id !== 'review' ? 'Optional' : 'Required'}</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-white/10">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <div className="flex flex-wrap gap-2 pt-2">
-            {stepConfig.map((step, index) => {
-              const state = getStepState(index);
-              return (
-                <button
-                  key={step.id}
-                  type="button"
-                  onClick={() => goToStep(index)}
-                  className={`rounded-full border px-3 py-1.5 text-xs transition ${
-                    state === 'current'
-                      ? 'border-orange-300/70 bg-orange-400/12 text-white'
-                      : state === 'skipped'
-                        ? 'border-white/12 bg-white/[0.02] text-white/55'
-                        : state === 'visited'
-                          ? 'border-white/14 bg-white/[0.04] text-white/72'
-                          : 'border-white/8 bg-transparent text-white/35 hover:text-white/60'
-                  }`}
-                >
-                  {index + 1}. {step.title.replace('Tell us about your restaurant', 'About').replace('What services do you offer?', 'Services').replace('Choose the look and tone', 'Style').replace('Add a few menu highlights', 'Menu').replace('How should customers book or order?', 'Booking').replace('How should customers contact you?', 'Contact').replace('Add photos and assets', 'Photos').replace('Review and generate', 'Review')}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <BuilderStepProgress
+          currentStep={currentStep}
+          steps={stepConfig}
+          getStepState={getStepState}
+          onSelectStep={goToStep}
+        />
 
         <form onSubmit={handleSubmit} className="rounded-[32px] border border-white/10 bg-[#111116] p-6 shadow-[0_35px_90px_-45px_rgba(0,0,0,0.9)] sm:p-8">
           <div className="mb-8 space-y-2">
@@ -1550,57 +1470,14 @@ export const Builder: React.FC<{ setDetails: (d: BusinessDetails) => void }> = (
             </div>
           ) : null}
 
-          <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <button
-              type="button"
-              onClick={handleBack}
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 px-5 py-3 text-sm font-medium text-white/72 transition hover:bg-white/[0.05] hover:text-white"
-            >
-              <ArrowLeft size={16} />
-              {currentStep === 0 ? 'Back home' : 'Back'}
-            </button>
-
-            <div className="flex flex-col gap-3 sm:flex-row">
-              {current.id !== 'review' ? (
-                <button
-                  type="button"
-                  onClick={handleSkip}
-                  className="rounded-full border border-white/10 px-5 py-3 text-sm font-medium text-white/72 transition hover:bg-white/[0.05] hover:text-white"
-                >
-                  Skip for now
-                </button>
-              ) : null}
-
-              {current.id === 'review' ? (
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" />
-                      Generating website
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={16} />
-                      Generate Website
-                    </>
-                  )}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleNext}
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black transition hover:brightness-105"
-                >
-                  Next
-                  <ArrowRight size={16} />
-                </button>
-              )}
-            </div>
-          </div>
+          <BuilderStepActions
+            currentStep={currentStep}
+            currentStepId={current.id}
+            isSubmitting={isSubmitting}
+            onBack={handleBack}
+            onSkip={handleSkip}
+            onNext={handleNext}
+          />
         </form>
       </div>
     </div>

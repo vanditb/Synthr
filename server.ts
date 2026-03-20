@@ -3,6 +3,11 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import Groq from "groq-sdk";
+import {
+  buildGenerationPrompt as buildSharedGenerationPrompt,
+  finalizeGeneratedHtml as finalizeSharedGeneratedHtml,
+  GENERATION_SYSTEM_PROMPT,
+} from "./lib/generation";
 
 dotenv.config();
 
@@ -1128,217 +1133,44 @@ IMAGE RULES:
 
     const hasEditContext = Boolean(customInstruction && existingHtml);
 
-    const prompt = hasEditContext
-      ? `You are an AI website editor inside a live preview environment.
-
-Your job is to EXECUTE the user's request immediately by editing ONLY the relevant section(s).
-Preserve everything else: layout, colors, spacing, typography, and all other sections.
-Do NOT regenerate or redesign the entire website.
-Return the FULL updated HTML document (no markdown, no explanations).
-
-If the request is about using an uploaded image or changing a background, do not alter any other sections.
-
-USER_REQUEST:
-${customInstruction}
-
-EXISTING_HTML:
-${existingHtml}
-`
-      : `Create a high-converting, professional restaurant website with the following details:
-
-🏪 RESTAURANT INFO:
-Name: ${name}
-Cuisine: ${cuisineType}
-Price Range: ${priceRange}
-Tagline: ${tagline || 'Delicious cuisine, unforgettable experience'}
-Address: ${address}, ${city}
-Phone: ${phone}
-Email: ${email}
-${neighborhood ? 'Neighborhood: ' + neighborhood : ''}
-${parking ? 'Parking: ' + parking : ''}
-
-📋 ABOUT:
-${shortDescription || description}
-${fullStory && founderName ? `
-Founded by ${founderName}${yearFounded ? ` in ${yearFounded}` : ''}.
-${fullStory}` : ''}
-${menuSourceText ? `\nRAW MENU TEXT:\n${menuSourceText}` : ''}
-${Array.isArray(menuSourceImages) && menuSourceImages.length ? `\nMENU IMAGES PROVIDED: ${menuSourceImages.length}` : ''}
-
-BRAND DIRECTION:
-Atmosphere: ${brand?.atmosphere || 'Not specified'}
-Audience: ${brand?.audience || 'Not specified'}
-Keywords: ${Array.isArray(brand?.keywords) && brand.keywords.length ? brand.keywords.join(', ') : 'Not specified'}
-Hero focus: ${brand?.heroFocus || 'Not specified'}
-Primary CTA: ${primaryCta || 'Not specified'}
-Publishing intent: ${domainPreference || 'Not specified'}
-
-🍽️ MENU:
-${menu?.map((item: any) => `- ${item.name}: ${item.description} (${formatMenuPrice(item.displayPrice ?? item.price)})`).join('\n')}
-${Array.isArray(signatureDishes) && signatureDishes.length ? `Signature dishes: ${signatureDishes.join(', ')}` : ''}
-
-⏰ HOURS:
-${Object.entries(hours || {}).map(([day, time]) => `${day}: ${time}`).join('\n')}
-
-🛒 SERVICES:
-${[dineIn && '✓ Dine-in', takeout && '✓ Takeout', delivery && '✓ Delivery'].filter(Boolean).join(', ')}
-${[services?.catering && '✓ Catering', services?.privateDining && '✓ Private dining'].filter(Boolean).join(', ')}
-
-📱 ONLINE ORDERING:
-${onlineOrdering?.acceptOrders ? `Available on: ${onlineOrdering.platforms.join(', ')} - URL: ${onlineOrdering.customURL}` : 'Not available'}
-${ordering?.enabled ? `Ordering provider: ${ordering.provider} - URL: ${ordering.url || 'Not provided'}` : ''}
-
-📅 RESERVATIONS:
-${reservations?.acceptReservations ? `Available on: ${reservations.platforms.join(', ')} - URL: ${reservations.url}` : 'Not available'}
-
-🎂 CATERING:
-${cateringAvailable ? `Available - Capacity: ${privateEventCapacity} guests - Email: ${cateringEmail}` : 'Not available'}
-
-🎵 EVENTS:
-${hostEvents && weeklySpecials ? weeklySpecials : 'No regular events'}
-
-📱 SOCIAL:
-${socialLinks?.instagram ? 'Instagram: ' + socialLinks.instagram + ' ' : ''}${socialLinks?.tiktok ? 'TikTok: ' + socialLinks.tiktok : ''}
-
-Design Style: ${style} 
-Tone: ${tone}
-
-${customInstruction ? `⭐ SPECIAL REQUEST: "${customInstruction}"` : ''}
-${imageInstructions}
-
-REQUIREMENTS:
-- Create a complete, valid HTML document (no markdown)
-- Use Tailwind CSS via CDN
-- Use the provided IMAGE ASSETS URLs. Ensure images are cuisine-appropriate and consistent.
-- Use color intentionally. Do not default to an all-white website.
-- Build a palette from the cuisine, tone, and style:
-  - Indian: warm saffron, amber, deep spice tones
-  - Italian: rich neutrals, olive, tomato, stone, warm cream
-  - Japanese: restrained ink, indigo, slate, off-white
-  - Casual/cafe: lighter, warmer surfaces with clear contrast
-  - Luxury/upscale: richer neutrals, deep accents, premium contrast
-- Ensure text contrast is always readable. Never place white text on a white or very light background.
-- Do not add or mix cuisines. If cuisine is Italian, only show Italian dishes. If Indian, only Indian dishes.
-- Do not use any single image URL more than twice.
-- Focus ONLY on visual design and layout. Do NOT change functionality or data.
-- Mobile-responsive design
-- Include: Hero, Navigation, About Us, Full Menu (organized by category), Featured Dishes, Experience/Atmosphere, Hours, Order, Reservation, Contact, Footer
-- Section flow MUST be: Hero → About → Menu → Featured → Experience → Hours → Order → Reserve → Contact
-- Use modern layout patterns only: split layouts, grids, zig-zag alternation, and full-width hero with overlay.
-- STRICT: Never place an image directly below a block of text. No text→image vertical stacking unless inside a card/grid.
-- Do not create plain sections with just a paragraph. Every section must use cards, panels, or structured containers.
-- Every section must include: a heading, 2–4 lines of meaningful content, and supporting UI (cards, icons, images, lists).
-- Do NOT reuse the same layout for multiple sections; alternate between split, grid, and zig-zag.
-- Enforce a consistent design system: same spacing scale, same button styles, and a max of 2 fonts.
-- Use subtle animations (hover transitions) and premium visual details (soft gradients, shadows, rounded-2xl cards).
-- Add testimonials section (generate if not provided) within the Experience area.
-- Navigation must be sticky, clean, and visually separated (shadow or backdrop blur).
-- All navigation tabs MUST use anchor links (e.g., #home, #about, #menu, #hours, #order, #reserve, #contact) and every target section must exist with matching id attributes.
-- Do NOT create links to non-existent pages. Every button and nav item must scroll to a real section.
-- Add basic JavaScript for smooth scrolling for anchor links.
-- The reservation section must include: date selector (calendar grid or date input), 6–10 time slots, party size selector, and name + phone/email inputs.
-- Typography must be consistent and professional (limit to 2 complementary fonts).
-- Ensure strong contrast between text and background; if text sits on images, add a dark overlay or a solid background card.
-- Avoid any overlapping elements; no absolute positioning for text blocks unless paired with safe padding and overlays.
-- All buttons must be readable, aligned, and never overlap; use flex-wrap for button groups.
-- Use clean spacing and alignment so sections feel organized and realistic.
-- ${style === "Luxury" ? 'Elegant, upscale, fine dining aesthetic with premium typography' : style === "Modern" ? 'Clean, contemporary, minimalist design' : style === "Casual" ? 'Friendly, inviting, approachable design' : 'Professional and polished'}
-- ${tone === "Traditional" ? 'Classic, timeless language' : tone === "Trendy" ? 'Modern, fashionable voice' : tone === "Upscale" ? 'Premium, sophisticated tone' : 'Warm, welcoming, family-friendly'}
-- Prominent "Order Now" and "Reserve" buttons
-- Fast-loading, optimal performance
-- Professional footer with all contact information
-- No empty sections or placeholder text. If a detail is missing, write tasteful, generic copy without inventing facts like address, phone, or prices.
-- Menu MUST use only the provided items exactly as listed. Do not add, remove, or change any menu item.
-
-Return ONLY raw HTML - no markdown code blocks, no explanations.`;
+    const prompt = buildSharedGenerationPrompt(req.body);
 
     console.log('🤖 Calling Groq API...');
     const response = await groq.chat.completions.create({
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+        { role: 'system', content: GENERATION_SYSTEM_PROMPT },
+        { role: 'user', content: prompt },
+      ],
       model: groqModel,
       temperature: hasEditContext ? 0.3 : 1,
       max_tokens: 4096,
     });
     console.log('✅ Groq response received');
 
-    const html = response.choices[0]?.message?.content || "<html><body>Error generating preview.</body></html>";
-    console.log('📝 Raw HTML length:', html.length);
-    
-    // Better HTML cleaning - handle various markdown wrapping formats
-    let cleanHtml = html;
-    if (cleanHtml.includes('```html')) {
-      cleanHtml = cleanHtml.replace(/```html\n?/g, '').replace(/```\n?/g, '');
-    }
-    if (cleanHtml.includes('```')) {
-      cleanHtml = cleanHtml.replace(/```[a-z]*\n?/g, '').replace(/```\n?/g, '');
-    }
-    cleanHtml = cleanHtml.trim();
+    const rawHtml = response.choices[0]?.message?.content || "<html><body>Error generating preview.</body></html>";
+    console.log('📝 Raw HTML length:', rawHtml.length);
 
-    cleanHtml = ensureTailwindCdn(cleanHtml);
-    cleanHtml = ensureDesignSafetyStyles(cleanHtml, style, cuisineType, tone);
-    cleanHtml = normalizeOnPageLinks(cleanHtml);
-    cleanHtml = ensureSmoothScrollScript(cleanHtml);
-    cleanHtml = injectFallbackGallery(cleanHtml, imageAssets);
-    cleanHtml = applyHeroBackground(cleanHtml, assistantImage, customInstruction);
-    cleanHtml = enforceMenuSection(cleanHtml, menuHTML);
-    
-    console.log('🧹 Cleaned HTML length:', cleanHtml.length);
-    
-    // Validate that we have actual HTML
-    if (!cleanHtml.includes('<html') && !cleanHtml.includes('<HTML')) {
-      console.warn('⚠️ Response does not contain HTML tags. Raw response:', html.substring(0, 200));
-    }
+    const finalized = finalizeSharedGeneratedHtml(req.body, rawHtml);
+    console.log('🧹 Final HTML length:', finalized.html.length, 'source:', finalized.meta.source);
 
-    const looksInvalid =
-      cleanHtml.length < 1200 ||
-      !/<body[^>]*>/i.test(cleanHtml) ||
-      (!/<nav[^>]*>/i.test(cleanHtml) && !/<header[^>]*>/i.test(cleanHtml)) ||
-      (!/<section[^>]*>/i.test(cleanHtml) && !/<img\\s/i.test(cleanHtml)) ||
-      !/href=["']#home["']/i.test(cleanHtml) ||
-      !/id=["']home["']/i.test(cleanHtml) ||
-      !/id=["']order["']/i.test(cleanHtml) ||
-      !/id=["']reserve["']/i.test(cleanHtml) ||
-      !/id=["']contact["']/i.test(cleanHtml);
-
-    if (looksInvalid) {
-      if (hasEditContext && typeof existingHtml === 'string' && existingHtml.length > 0) {
-        console.warn('⚠️ Edit output invalid. Keeping existing HTML to avoid visual regression.');
-        cleanHtml = existingHtml;
-      } else {
-        console.warn('⚠️ Using fallback template due to low-quality HTML output.');
-        cleanHtml = buildFallbackHtml({
-          name,
-          cuisineType,
-          priceRange,
-          tagline: tagline || 'Delicious cuisine, unforgettable experience',
-          address,
-          city,
-          phone,
-          email,
-          neighborhood,
-          parking,
-          shortDescription,
-          description,
-          menuHTML,
-          hoursHTML,
-          orderingSection,
-          reservationsSection,
-          aboutSection,
-          cateringSection,
-          eventsSection,
-          socialHTML,
-          googleMapsLink,
-          imageAssets
-        });
-      }
-    }
-
-    res.json({ html: cleanHtml });
+    res.json(finalized);
     console.log('✅ Response sent successfully');
   } catch (error) {
     console.error("❌ Generation error:", error);
     const errorMessage = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: "Failed to generate website", details: errorMessage });
+    try {
+      const fallback = finalizeSharedGeneratedHtml(req.body, '');
+      res.status(200).json({
+        ...fallback,
+        meta: {
+          ...fallback.meta,
+          source: 'fallback',
+          validationIssues: [...fallback.meta.validationIssues, `upstream-error:${errorMessage}`],
+        },
+      });
+    } catch (_fallbackError) {
+      res.status(500).json({ error: "Failed to generate website", details: errorMessage });
+    }
   }
 });
 

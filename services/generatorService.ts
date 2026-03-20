@@ -1,4 +1,5 @@
 import { BusinessDetails, MenuItem } from '../types';
+import type { GenerationMeta } from '../lib/generation';
 
 const ensureUrl = (value?: string) => {
   const trimmed = value?.trim();
@@ -138,7 +139,7 @@ export const generateWebsiteHtml = async (
   customInstruction?: string,
   existingHtml?: string,
   assistantImage?: string
-): Promise<string> => {
+): Promise<GenerationResult> => {
   try {
     console.log('Starting website generation...');
     let response: Response;
@@ -197,9 +198,16 @@ export const generateWebsiteHtml = async (
       throw new Error('No HTML returned from API');
     }
 
-    return data.html;
+    return {
+      html: data.html,
+      meta: data.meta,
+    };
   } catch (error) {
     console.error('Generation error:', error);
     throw error;
   }
 };
+export interface GenerationResult {
+  html: string;
+  meta?: GenerationMeta;
+}
