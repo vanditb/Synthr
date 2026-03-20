@@ -1,5 +1,6 @@
 import Groq from 'groq-sdk';
 import type { ChatCompletionMessageParam } from 'groq-sdk/resources/chat/completions';
+import { getPreferredGroqApiKey, getPreferredGroqModel } from '../lib/backupModel';
 
 export const config = {
   api: {
@@ -10,9 +11,9 @@ export const config = {
 };
 
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
+  apiKey: getPreferredGroqApiKey(),
 });
-const groqModel = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const groqModel = getPreferredGroqModel() || 'llama-3.3-70b-versatile';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {

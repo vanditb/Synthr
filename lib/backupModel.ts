@@ -7,7 +7,13 @@ type BackupGenerationInput = {
   maxTokens: number;
 };
 
+export const useBackupGroqOnly = () => process.env.GROQ_DISABLE_PRIMARY === 'true';
+export const disableHtmlFallback = () => process.env.GROQ_DISABLE_HTML_FALLBACK === 'true' || useBackupGroqOnly();
 export const canUseBackupGroq = () => Boolean(process.env.GROQ_API_KEY_BACKUP);
+export const getPreferredGroqApiKey = () =>
+  useBackupGroqOnly() && process.env.GROQ_API_KEY_BACKUP ? process.env.GROQ_API_KEY_BACKUP : process.env.GROQ_API_KEY;
+export const getPreferredGroqModel = () =>
+  useBackupGroqOnly() && process.env.GROQ_MODEL_BACKUP ? process.env.GROQ_MODEL_BACKUP : process.env.GROQ_MODEL;
 
 export const generateWithBackupGroq = async ({
   systemPrompt,

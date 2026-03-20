@@ -8,7 +8,7 @@ import {
   finalizeGeneratedHtml as finalizeSharedGeneratedHtml,
   GENERATION_SYSTEM_PROMPT,
 } from "./lib/generation";
-import { canUseBackupGroq, generateWithBackupGroq } from "./lib/backupModel";
+import { canUseBackupGroq, disableHtmlFallback, generateWithBackupGroq, useBackupGroqOnly } from "./lib/backupModel";
 
 dotenv.config();
 
@@ -1139,21 +1139,40 @@ IMAGE RULES:
     let rawHtml = "<html><body>Error generating preview.</body></html>";
 
     try {
-      console.log('🤖 Calling Groq API...');
-      const response = await groq.chat.completions.create({
-        messages: [
-          { role: 'system', content: GENERATION_SYSTEM_PROMPT },
-          { role: 'user', content: prompt },
-        ],
-        model: groqModel,
-        temperature: hasEditContext ? 0.3 : 1,
-        max_tokens: 4096,
-      });
-      console.log('✅ Groq response received');
-      rawHtml = response.choices[0]?.message?.content || rawHtml;
+      if (useBackupGroqOnly()) {
+        if (!canUseBackupGroq()) {
+          throw new Error('GROQ_DISABLE_PRIMARY is enabled but GROQ_API_KEY_BACKUP is not configured');
+        }
+
+        console.log('🟡 Primary Groq disabled, using backup Groq key...');
+        rawHtml = await generateWithBackupGroq({
+          systemPrompt: GENERATION_SYSTEM_PROMPT,
+          userPrompt: prompt,
+          temperature: hasEditContext ? 0.3 : 1,
+          maxTokens: 4096,
+        });
+        console.log('✅ Backup Groq response received');
+      } else {
+        console.log('🤖 Calling primary Groq API...');
+        const response = await groq.chat.completions.create({
+          messages: [
+            { role: 'system', content: GENERATION_SYSTEM_PROMPT },
+            { role: 'user', content: prompt },
+          ],
+          model: groqModel,
+          temperature: hasEditContext ? 0.3 : 1,
+          max_tokens: 4096,
+        });
+        console.log('✅ Primary Groq response received');
+        rawHtml = response.choices[0]?.message?.content || rawHtml;
+      }
     } catch (primaryError) {
       const primaryMessage = primaryError instanceof Error ? primaryError.message : String(primaryError);
-      console.error('⚠️ Groq generation failed:', primaryMessage);
+      console.error('⚠️ Primary Groq generation failed:', primaryMessage);
+
+      if (useBackupGroqOnly()) {
+        throw primaryError;
+      }
 
       if (!canUseBackupGroq()) {
         throw primaryError;
@@ -1178,6 +1197,9 @@ IMAGE RULES:
   } catch (error) {
     console.error("❌ Generation error:", error);
     const errorMessage = error instanceof Error ? error.message : String(error);
+    if (disableHtmlFallback()) {
+      return res.status(500).json({ error: "Failed to generate website", details: errorMessage });
+    }
     try {
       const fallback = finalizeSharedGeneratedHtml(req.body, '');
       res.status(200).json({

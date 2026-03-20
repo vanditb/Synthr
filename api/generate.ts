@@ -4,7 +4,7 @@ import {
   finalizeGeneratedHtml as finalizeSharedGeneratedHtml,
   GENERATION_SYSTEM_PROMPT,
 } from '../lib/generation';
-import { canUseBackupGroq, generateWithBackupGroq } from '../lib/backupModel';
+import { canUseBackupGroq, disableHtmlFallback, generateWithBackupGroq, useBackupGroqOnly } from '../lib/backupModel';
 
 export const config = {
   api: {
@@ -782,18 +782,35 @@ IMAGE RULES:
     let rawHtml = '<html><body>Error generating preview.</body></html>';
 
     try {
-      const response = await groq.chat.completions.create({
-        messages: [
-          { role: 'system', content: GENERATION_SYSTEM_PROMPT },
-          { role: 'user', content: prompt },
-        ],
-        model: groqModel,
-        temperature: hasEditContext ? 0.3 : 1,
-        max_tokens: 4096,
-      });
+      if (useBackupGroqOnly()) {
+        if (!canUseBackupGroq()) {
+          throw new Error('GROQ_DISABLE_PRIMARY is enabled but GROQ_API_KEY_BACKUP is not configured');
+        }
 
-      rawHtml = response.choices[0]?.message?.content || rawHtml;
+        rawHtml = await generateWithBackupGroq({
+          systemPrompt: GENERATION_SYSTEM_PROMPT,
+          userPrompt: prompt,
+          temperature: hasEditContext ? 0.3 : 1,
+          maxTokens: 4096,
+        });
+      } else {
+        const response = await groq.chat.completions.create({
+          messages: [
+            { role: 'system', content: GENERATION_SYSTEM_PROMPT },
+            { role: 'user', content: prompt },
+          ],
+          model: groqModel,
+          temperature: hasEditContext ? 0.3 : 1,
+          max_tokens: 4096,
+        });
+
+        rawHtml = response.choices[0]?.message?.content || rawHtml;
+      }
     } catch (primaryError) {
+      if (useBackupGroqOnly()) {
+        throw primaryError;
+      }
+
       if (!canUseBackupGroq()) {
         throw primaryError;
       }
@@ -811,6 +828,9 @@ IMAGE RULES:
     res.status(200).json(finalized);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    if (disableHtmlFallback()) {
+      return res.status(500).json({ error: 'Failed to generate website', details: errorMessage });
+    }
     try {
       const fallback = finalizeSharedGeneratedHtml(req.body, '');
       res.status(200).json({
