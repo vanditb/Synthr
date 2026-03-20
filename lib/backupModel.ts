@@ -48,38 +48,33 @@ const hasLowDesignSignal = (html: string): boolean => {
   );
 };
 
-const buildGeminiPremiumPrompt = (systemPrompt: string, userPrompt: string) => `You are a world-class senior frontend engineer and premium UI/UX designer specializing in restaurant websites.
+const buildGeminiPremiumPrompt = (systemPrompt: string, userPrompt: string) => `Act as a world-class senior frontend engineer and premium restaurant website designer.
 
-Your job is to create a website that feels bespoke, polished, visually intentional, and closer to a hand-designed restaurant site than a generic Tailwind landing page.
+Create one complete restaurant website in raw HTML that feels custom, polished, visual, and high-end.
 
-Creative direction:
-- Build a premium, editorial, image-led restaurant website with strong hierarchy and visual contrast.
-- Make the hero feel striking and high-end, with refined typography, stronger composition, and clearer calls to action.
-- Use cleaner spacing, more intentional composition, and fewer repetitive card grids.
-- Favor layered sections, split layouts, large image moments, and tasteful detail over generic stacked blocks.
-- Make the navigation, menu presentation, and footer feel custom and brand-specific.
-- The site should feel modern and expensive, not childish, sparse, or template-like.
+Design goals:
+- Make it look like a real premium restaurant website, not a plain HTML document.
+- Use a strong hero, clear typography hierarchy, large image moments, and cleaner spacing.
+- Prefer elegant split layouts, layered sections, and stronger composition over repetitive card grids.
+- Make the navigation, menu section, CTA areas, and footer feel intentional and designed.
 - Use Tailwind CSS CDN, premium Google Fonts, and tasteful iconography where helpful.
-- Use the image assets, branding cues, and structure already provided in the source prompt.
+- Use the provided image assets intentionally.
+- Keep the site mobile responsive and visually strong on desktop.
 
-Hard constraints:
-- Follow every business fact and technical rule from the source prompt exactly.
-- Do not invent business facts, addresses, phone numbers, hours, reservation platforms, or menu items.
-- Do not invent extra sections that contradict the business data.
-- Keep internal navigation limited to valid in-page anchors only.
-- Keep the site mobile responsive, semantic, and readable with safe contrast.
+Hard rules:
+- Follow all business facts and technical rules from the source instructions exactly.
+- Do not invent menu items or business facts.
+- Use only valid in-page anchor navigation.
+- Keep contrast readable.
 - Return only one complete raw HTML document with no markdown.
 
-Source rules:
+Source instructions:
 ${systemPrompt}
 
-Project brief:
+Website brief:
 ${userPrompt}
 
-Final reminder:
-- Make it feel premium and custom.
-- Keep it fact-safe.
-- Return only the final raw HTML document.`;
+Return only the final raw HTML document.`;
 
 export const generateWithGeminiBackup = async ({
   systemPrompt,
@@ -92,7 +87,7 @@ export const generateWithGeminiBackup = async ({
     throw new Error('GEMINI_API_KEY is not configured');
   }
 
-  const model = process.env.GEMINI_MODEL || 'gemini-1.5-pro';
+  const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
   const combinedPrompt = buildGeminiPremiumPrompt(systemPrompt, userPrompt);
 
   const response = await fetch(
