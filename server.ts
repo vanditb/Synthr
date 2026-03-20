@@ -8,6 +8,7 @@ import {
   finalizeGeneratedHtml as finalizeSharedGeneratedHtml,
   GENERATION_SYSTEM_PROMPT,
 } from "./lib/generation";
+import { canUseGeminiBackup, generateWithGeminiBackup } from "./lib/backupModel";
 
 dotenv.config();
 
@@ -1135,19 +1136,38 @@ IMAGE RULES:
 
     const prompt = buildSharedGenerationPrompt(req.body);
 
-    console.log('🤖 Calling Groq API...');
-    const response = await groq.chat.completions.create({
-      messages: [
-        { role: 'system', content: GENERATION_SYSTEM_PROMPT },
-        { role: 'user', content: prompt },
-      ],
-      model: groqModel,
-      temperature: hasEditContext ? 0.3 : 1,
-      max_tokens: 4096,
-    });
-    console.log('✅ Groq response received');
+    let rawHtml = "<html><body>Error generating preview.</body></html>";
 
-    const rawHtml = response.choices[0]?.message?.content || "<html><body>Error generating preview.</body></html>";
+    try {
+      console.log('🤖 Calling Groq API...');
+      const response = await groq.chat.completions.create({
+        messages: [
+          { role: 'system', content: GENERATION_SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+        model: groqModel,
+        temperature: hasEditContext ? 0.3 : 1,
+        max_tokens: 4096,
+      });
+      console.log('✅ Groq response received');
+      rawHtml = response.choices[0]?.message?.content || rawHtml;
+    } catch (primaryError) {
+      const primaryMessage = primaryError instanceof Error ? primaryError.message : String(primaryError);
+      console.error('⚠️ Groq generation failed:', primaryMessage);
+
+      if (!canUseGeminiBackup()) {
+        throw primaryError;
+      }
+
+      console.log('🟡 Trying Gemini backup...');
+      rawHtml = await generateWithGeminiBackup({
+        systemPrompt: GENERATION_SYSTEM_PROMPT,
+        userPrompt: prompt,
+        temperature: hasEditContext ? 0.3 : 1,
+        maxTokens: 4096,
+      });
+      console.log('✅ Gemini backup response received');
+    }
     console.log('📝 Raw HTML length:', rawHtml.length);
 
     const finalized = finalizeSharedGeneratedHtml(req.body, rawHtml);

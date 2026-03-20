@@ -4,6 +4,7 @@ import {
   finalizeGeneratedHtml as finalizeSharedGeneratedHtml,
   GENERATION_SYSTEM_PROMPT,
 } from '../lib/generation';
+import { canUseGeminiBackup, generateWithGeminiBackup } from '../lib/backupModel';
 
 export const config = {
   api: {
@@ -778,17 +779,33 @@ IMAGE RULES:
 
     const prompt = buildSharedGenerationPrompt(req.body);
 
-    const response = await groq.chat.completions.create({
-      messages: [
-        { role: 'system', content: GENERATION_SYSTEM_PROMPT },
-        { role: 'user', content: prompt },
-      ],
-      model: groqModel,
-      temperature: hasEditContext ? 0.3 : 1,
-      max_tokens: 4096,
-    });
+    let rawHtml = '<html><body>Error generating preview.</body></html>';
 
-    const rawHtml = response.choices[0]?.message?.content || '<html><body>Error generating preview.</body></html>';
+    try {
+      const response = await groq.chat.completions.create({
+        messages: [
+          { role: 'system', content: GENERATION_SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+        model: groqModel,
+        temperature: hasEditContext ? 0.3 : 1,
+        max_tokens: 4096,
+      });
+
+      rawHtml = response.choices[0]?.message?.content || rawHtml;
+    } catch (primaryError) {
+      if (!canUseGeminiBackup()) {
+        throw primaryError;
+      }
+
+      rawHtml = await generateWithGeminiBackup({
+        systemPrompt: GENERATION_SYSTEM_PROMPT,
+        userPrompt: prompt,
+        temperature: hasEditContext ? 0.3 : 1,
+        maxTokens: 4096,
+      });
+    }
+
     const finalized = finalizeSharedGeneratedHtml(req.body, rawHtml);
 
     res.status(200).json(finalized);
