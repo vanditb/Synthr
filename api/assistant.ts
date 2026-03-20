@@ -1,4 +1,5 @@
 import Groq from 'groq-sdk';
+import type { ChatCompletionMessageParam } from 'groq-sdk/resources/chat/completions';
 
 export const config = {
   api: {
@@ -25,14 +26,14 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: 'Invalid payload', details: 'messages must be an array' });
     }
 
-    const sanitizedMessages = messages
+    const sanitizedMessages: ChatCompletionMessageParam[] = messages
       .filter((msg: any) => msg && typeof msg.content === 'string')
       .slice(-12)
       .map((msg: any) => ({
         role: msg.role === 'assistant' ? 'assistant' : 'user',
         content: msg.content.trim(),
       }))
-      .filter((msg: any) => msg.content.length > 0);
+      .filter((msg: any) => msg.content.length > 0) as ChatCompletionMessageParam[];
 
     const context = details
       ? `Business context:\nName: ${details.name || 'Unknown'}\nType: ${details.type || 'Unknown'}\nCuisine: ${details.cuisineType || 'Not specified'}\nStyle: ${details.style || 'Not specified'}\nTone: ${details.tone || 'Not specified'}\nCity: ${details.location?.city || 'Not specified'}\nBrand summary: ${details.brand?.summary || 'Not specified'}\nPrimary CTA: ${details.primaryCta || 'Not specified'}`
@@ -48,7 +49,7 @@ export default async function handler(req: any, res: any) {
         { role: 'system', content: context },
         ...(imageNote ? [{ role: 'system', content: imageNote }] : []),
         ...sanitizedMessages,
-      ],
+      ] as ChatCompletionMessageParam[],
       model: groqModel,
       temperature: 0.7,
       max_tokens: 512,

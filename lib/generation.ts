@@ -66,6 +66,7 @@ type GenerationPayload = {
     price?: unknown;
     displayPrice?: string;
     category?: string;
+    dietary?: string[];
   }>;
   menuSourceText?: string;
   menuSourceImages?: string[];
@@ -443,7 +444,7 @@ const chooseNavPattern = (variant: LayoutVariant, seed: number): NavPattern =>
       'modern-minimal': ['inline-minimal', 'wordmark-left'],
       'warm-neighborhood': ['solid-bar', 'wordmark-left'],
       'bold-upscale': ['floating-glass', 'solid-bar'],
-    }[variant],
+    }[variant] as NavPattern[],
     seed + 23
   );
 
@@ -454,7 +455,7 @@ const chooseImageTreatment = (variant: LayoutVariant, seed: number): ImageTreatm
       'modern-minimal': ['soft-natural', 'cinematic'],
       'warm-neighborhood': ['soft-natural', 'editorial-collage'],
       'bold-upscale': ['high-contrast', 'cinematic'],
-    }[variant],
+    }[variant] as ImageTreatment[],
     seed + 31
   );
 
