@@ -8,7 +8,7 @@ import {
   finalizeGeneratedHtml as finalizeSharedGeneratedHtml,
   GENERATION_SYSTEM_PROMPT,
 } from "./lib/generation";
-import { canUseGeminiBackup, generateWithGeminiBackup } from "./lib/backupModel";
+import { canUseBackupGroq, generateWithBackupGroq } from "./lib/backupModel";
 
 dotenv.config();
 
@@ -1155,18 +1155,18 @@ IMAGE RULES:
       const primaryMessage = primaryError instanceof Error ? primaryError.message : String(primaryError);
       console.error('⚠️ Groq generation failed:', primaryMessage);
 
-      if (!canUseGeminiBackup()) {
+      if (!canUseBackupGroq()) {
         throw primaryError;
       }
 
-      console.log('🟡 Trying Gemini backup...');
-      rawHtml = await generateWithGeminiBackup({
+      console.log('🟡 Trying backup Groq key...');
+      rawHtml = await generateWithBackupGroq({
         systemPrompt: GENERATION_SYSTEM_PROMPT,
         userPrompt: prompt,
         temperature: hasEditContext ? 0.3 : 1,
         maxTokens: 4096,
       });
-      console.log('✅ Gemini backup response received');
+      console.log('✅ Backup Groq response received');
     }
     console.log('📝 Raw HTML length:', rawHtml.length);
 

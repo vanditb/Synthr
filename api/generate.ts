@@ -4,7 +4,7 @@ import {
   finalizeGeneratedHtml as finalizeSharedGeneratedHtml,
   GENERATION_SYSTEM_PROMPT,
 } from '../lib/generation';
-import { canUseGeminiBackup, generateWithGeminiBackup } from '../lib/backupModel';
+import { canUseBackupGroq, generateWithBackupGroq } from '../lib/backupModel';
 
 export const config = {
   api: {
@@ -794,11 +794,11 @@ IMAGE RULES:
 
       rawHtml = response.choices[0]?.message?.content || rawHtml;
     } catch (primaryError) {
-      if (!canUseGeminiBackup()) {
+      if (!canUseBackupGroq()) {
         throw primaryError;
       }
 
-      rawHtml = await generateWithGeminiBackup({
+      rawHtml = await generateWithBackupGroq({
         systemPrompt: GENERATION_SYSTEM_PROMPT,
         userPrompt: prompt,
         temperature: hasEditContext ? 0.3 : 1,
