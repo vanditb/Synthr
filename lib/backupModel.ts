@@ -22,6 +22,32 @@ type GeminiResponse = {
 
 export const canUseGeminiBackup = () => Boolean(process.env.GEMINI_API_KEY);
 
+const countMatches = (value: string, pattern: RegExp) => (value.match(pattern) || []).length;
+
+const hasLowDesignSignal = (html: string): boolean => {
+  const normalized = html.trim();
+  const classCount = countMatches(normalized, /\bclass=/gi);
+  const sectionCount = countMatches(normalized, /<section\b/gi);
+  const imageCount = countMatches(normalized, /<img\b/gi);
+  const buttonLikeCount = countMatches(normalized, /(Order Now|Reserve Now|Book Now|View Menu|Plan your visit)/gi);
+  const utilitySignalCount = countMatches(
+    normalized,
+    /\b(max-w-|grid|flex|px-\d|py-\d|rounded-|shadow|bg-|text-|md:|lg:|xl:)/g
+  );
+  const duplicateNavLabels = countMatches(
+    normalized,
+    /\b(Home|About|Menu|Reserve|Hours|Order|Contact)\b/g
+  );
+
+  return (
+    classCount < 18 ||
+    sectionCount < 4 ||
+    utilitySignalCount < 28 ||
+    buttonLikeCount < 2 ||
+    (imageCount === 0 && duplicateNavLabels > 10)
+  );
+};
+
 const buildGeminiPremiumPrompt = (systemPrompt: string, userPrompt: string) => `You are a world-class senior frontend engineer and premium UI/UX designer specializing in restaurant websites.
 
 Your job is to create a website that feels bespoke, polished, visually intentional, and closer to a hand-designed restaurant site than a generic Tailwind landing page.
@@ -100,6 +126,10 @@ export const generateWithGeminiBackup = async ({
   const text = data.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim() || '';
   if (!text) {
     throw new Error('Gemini backup returned no content');
+  }
+
+  if (hasLowDesignSignal(text)) {
+    throw new Error('Gemini backup returned low-design HTML');
   }
 
   return text;
