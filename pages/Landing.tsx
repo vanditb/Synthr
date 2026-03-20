@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -6,9 +6,7 @@ import {
   Globe,
   LayoutTemplate,
   MonitorSmartphone,
-  RefreshCcw,
   Sparkles,
-  WandSparkles,
 } from 'lucide-react';
 
 type ShowcaseItem = {
@@ -99,40 +97,7 @@ const showcaseItems: ShowcaseItem[] = [
   },
 ];
 
-const capabilityPanels = [
-  {
-    title: 'Add your details',
-    subtitle: 'Menu, hours, bookings, location.',
-    icon: WandSparkles,
-  },
-  {
-    title: 'Get a site back',
-    subtitle: 'Real pages, not a rough draft.',
-    icon: LayoutTemplate,
-  },
-  {
-    title: 'Keep refining',
-    subtitle: 'Edit sections, regenerate, publish.',
-    icon: RefreshCcw,
-  },
-];
-
 const capabilityCards = [
-  {
-    title: 'Copy written for your brand',
-    body: 'Menus, story, and booking sections written in the style you choose.',
-    icon: Sparkles,
-  },
-  {
-    title: 'Menus and pages built for you',
-    body: 'Hours, contact, ordering, and reservations are already structured.',
-    icon: LayoutTemplate,
-  },
-  {
-    title: 'Looks great on any screen',
-    body: 'The site feels polished on desktop and mobile from the first pass.',
-    icon: MonitorSmartphone,
-  },
 ];
 
 const workflowCards = [
@@ -181,6 +146,7 @@ const BrowserFrame = ({
 export const Landing: React.FC = () => {
   const navigate = useNavigate();
   const [activeIndex, setActiveIndex] = useState(0);
+  const productVideoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -189,6 +155,16 @@ export const Landing: React.FC = () => {
 
     return () => window.clearInterval(timer);
   }, []);
+
+  const handleProductVideoTimeUpdate = () => {
+    const video = productVideoRef.current;
+    if (!video || !Number.isFinite(video.duration) || video.duration <= 3) return;
+
+    if (video.currentTime >= video.duration - 3) {
+      video.currentTime = 0;
+      void video.play().catch(() => {});
+    }
+  };
 
   const active = showcaseItems[activeIndex];
 
@@ -342,7 +318,7 @@ export const Landing: React.FC = () => {
           </div>
 
           <div className={`${surfaceClass} overflow-hidden`}>
-            <div className="grid gap-0 lg:grid-cols-[0.24fr_0.28fr_0.48fr]">
+            <div className="grid gap-0 lg:grid-cols-[0.28fr_0.72fr]">
               <div className="border-b border-white/8 p-3 lg:border-b-0 lg:border-r">
                 <p className="px-3 pb-3 text-[11px] uppercase tracking-[0.2em] text-white/42">Restaurant type</p>
                 <div className="grid gap-2">
@@ -364,44 +340,6 @@ export const Landing: React.FC = () => {
                       </button>
                     );
                   })}
-                </div>
-              </div>
-
-              <div className="border-b border-white/8 p-6 lg:border-b-0 lg:border-r lg:p-8">
-                <div className="flex h-full flex-col">
-                  <div>
-                    <h3 className="mt-4 text-3xl font-semibold tracking-tight text-white">{active.title}</h3>
-                    <div className="mt-5 flex flex-wrap gap-2">
-                    {active.chips.map((chip) => (
-                      <span
-                        key={chip}
-                        className="rounded-full border border-white/12 bg-white/[0.04] px-3 py-1.5 text-xs text-white/70"
-                      >
-                        {chip}
-                      </span>
-                    ))}
-                    </div>
-                    <p className="mt-5 max-w-sm text-sm leading-7 text-white/60">{active.description}</p>
-                  </div>
-
-                  <div className="mt-8 grid gap-3">
-                    <div className="rounded-[24px] bg-white/[0.03] p-4">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-white/42">Site focus</p>
-                      <p className="mt-3 text-sm leading-6 text-white/72">
-                        {active.label === 'Fine Dining' && 'Reservations, tasting menus, private dining.'}
-                        {active.label === 'Cafe' && 'Hours, pickup, neighborhood traffic.'}
-                        {active.label === 'Bakery' && 'Daily bakes, preorder flows, pickup.'}
-                        {active.label === 'Pizzeria' && 'Direct ordering, menu scanning, location.'}
-                        {active.label === 'Cocktail Bar' && 'Events, reservations, late-night traffic.'}
-                      </p>
-                    </div>
-                    <div
-                      className="h-36 rounded-[24px] bg-cover bg-center"
-                      style={{
-                        backgroundImage: `linear-gradient(180deg,rgba(9,9,13,0.18),rgba(9,9,13,0.62)), url("${active.mobileImage}")`,
-                      }}
-                    />
-                  </div>
                 </div>
               </div>
 
@@ -429,43 +367,43 @@ export const Landing: React.FC = () => {
                           </div>
 
                           <div className="relative flex h-full items-end p-5">
-                            <div className="grid w-full gap-4 lg:grid-cols-[1fr_170px]">
-                              <div className="rounded-[26px] bg-[#0b0c10]/70 p-5 backdrop-blur-xl">
-                                <h4 className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                                  {active.label === 'Fine Dining' && 'A richer homepage for premium reservations.'}
-                                  {active.label === 'Cafe' && 'A cleaner site for regulars and rush hours.'}
-                                  {active.label === 'Bakery' && 'Daily bakes and cake orders, framed beautifully.'}
-                                  {active.label === 'Pizzeria' && 'Menu-first pages built for direct orders.'}
-                                  {active.label === 'Cocktail Bar' && 'Nightlife atmosphere with booking built in.'}
-                                </h4>
-                                <div className="mt-5 flex flex-wrap gap-2">
-                                  {active.chips.slice(0, 3).map((chip) => (
-                                    <span
-                                      key={chip}
-                                      className="rounded-full bg-white/[0.08] px-3 py-1.5 text-xs text-white/72"
-                                    >
-                                      {chip}
-                                    </span>
-                                  ))}
+                            <div className="w-full bg-[#0b0c10]/58 p-2 backdrop-blur-xl shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
+                              <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+                                <div className="p-4">
+                                  <p className="text-[11px] uppercase tracking-[0.18em] text-white/52">Generated homepage</p>
+                                  <h4 className="mt-4 text-3xl font-semibold tracking-tight text-white">
+                                    {active.siteTitle}
+                                  </h4>
+                                  <p className="mt-3 max-w-md text-sm leading-7 text-white/70">
+                                    {active.label === 'Fine Dining' && 'Seasonal menus, polished reservations, and a calmer premium layout.'}
+                                    {active.label === 'Cafe' && 'Coffee, breakfast, pickup, and daily traffic built into a lighter flow.'}
+                                    {active.label === 'Bakery' && 'Preorders, cakes, and daily bakes laid out for quick browsing.'}
+                                    {active.label === 'Pizzeria' && 'Direct ordering, menu scanning, and fast local decisions up front.'}
+                                    {active.label === 'Cocktail Bar' && 'Nightlife atmosphere, bookings, and event-driven moments built in.'}
+                                  </p>
+                                  <div className="mt-6 flex flex-wrap gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-white/76">
+                                    {active.nav.map((item) => (
+                                      <span key={item}>{item}</span>
+                                    ))}
+                                  </div>
                                 </div>
-                              </div>
 
-                              <div className="mx-auto w-full max-w-[180px] lg:max-w-none">
-                                <div className="rounded-[28px] border border-white/12 bg-[#0c0d11] p-2 shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
-                                  <div className="overflow-hidden rounded-[22px] border border-white/8 bg-[#111217]">
-                                    <div className="mx-auto mt-2 h-1.5 w-16 rounded-full bg-white/15" />
+                                <div className="overflow-hidden border border-white/8">
                                   <div
-                                    className="mt-3 h-[250px] bg-cover bg-center"
+                                    className="h-48 bg-cover bg-center"
                                     style={{
-                                      backgroundImage: `linear-gradient(180deg,rgba(9,9,13,0.05),rgba(9,9,13,0.60)), url("${active.mobileImage}")`,
+                                      backgroundImage: `linear-gradient(180deg,rgba(9,9,13,0.10),rgba(9,9,13,0.58)), url("${active.image}")`,
                                     }}
                                   />
-                                  <div className="border-t border-white/8 bg-white/[0.03] px-3 py-3 text-center text-xs text-white/58">
-                                    Mobile preview
+                                  <div className="grid gap-3 px-4 py-4 text-sm text-white/72">
+                                    <div className="flex items-center justify-between gap-4 border-b border-white/8 pb-3">
+                                      <span>{active.nav[0]}</span>
+                                      <span>{active.nav[active.nav.length - 1]}</span>
+                                    </div>
+                                    <p>Menu, location, and conversion points arranged like a real Synthr output.</p>
                                   </div>
                                 </div>
                               </div>
-                            </div>
                             </div>
                           </div>
                         </div>
@@ -495,100 +433,35 @@ export const Landing: React.FC = () => {
 
       <section className="px-4 py-20 sm:px-6 sm:py-24">
         <div className="mx-auto max-w-7xl">
-          <div className="grid gap-6 lg:grid-cols-[1.08fr_0.92fr]">
-            <div className={`${surfaceClass} overflow-hidden p-6 lg:p-8`}>
-              <div className="mb-6 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold uppercase tracking-[0.22em] text-orange-200">Product view</p>
-                  <h2 className="mt-3 text-4xl font-semibold tracking-[-0.04em] text-white">
-                    Add your details. Get a site back.
-                  </h2>
-                </div>
-              </div>
-
-              <div className="grid gap-4 lg:grid-cols-[0.48fr_0.52fr]">
-                <div className="space-y-5">
-                  {capabilityPanels.map((panel) => {
-                    const Icon = panel.icon;
-                    return (
-                      <div key={panel.title} className="py-1">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/[0.05] text-orange-200">
-                          <Icon size={20} />
-                        </div>
-                        <h3 className="mt-5 text-xl font-semibold text-white">{panel.title}</h3>
-                        <p className="mt-2 text-sm text-white/58">{panel.subtitle}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="rounded-[28px] border border-white/8 bg-[#111217] p-4">
-                  <div className="rounded-[24px] bg-white/[0.03] p-4">
-                    <div className="grid gap-3">
-                      {['Restaurant name', 'Cuisine and price range', 'Menu items and hours', 'Style and tone'].map((row, index) => (
-                        <div
-                          key={row}
-                          className={`rounded-2xl px-4 py-3 text-sm ${
-                            index === 2
-                              ? 'border border-orange-300/20 bg-orange-400/8 text-orange-100'
-                              : 'bg-white/[0.03] text-white/66'
-                            }`}
-                        >
-                          {row}
-                        </div>
-                      ))}
-                    </div>
-                    <div className="my-4 flex items-center justify-center">
-                      <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs uppercase tracking-[0.18em] text-white/48">
-                        Generate with AI
-                      </div>
-                    </div>
-                    <div className="overflow-hidden rounded-[24px] border border-white/8">
-                      <div
-                        className="h-[270px] bg-cover bg-center"
-                        style={{
-                          backgroundImage:
-                            'linear-gradient(180deg,rgba(9,9,13,0.12),rgba(9,9,13,0.72)), url("https://images.unsplash.com/photo-1552566626-52f8b29e368c?auto=format&fit=crop&w=1600&q=80")',
-                        }}
-                      >
-                        <div className="flex h-full items-end p-4">
-                          <div className="rounded-[22px] border border-white/12 bg-[#0b0c10]/68 p-4 backdrop-blur-xl">
-                            <p className="mt-3 text-xl font-semibold text-white">
-                              A publish-ready homepage, menu, story, and contact flow.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+          <div className={`${surfaceClass} overflow-hidden p-6 lg:p-8`}>
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.22em] text-orange-200">Product view</p>
+                <h2 className="mt-3 text-4xl font-semibold tracking-[-0.04em] text-white">
+                  Add your details. Get a site back.
+                </h2>
               </div>
             </div>
 
-            <div className="grid gap-5">
-              {capabilityCards.map((card) => {
-                const Icon = card.icon;
-                return (
-                  <div key={card.title} className={`${surfaceClass} overflow-hidden p-5`}>
-                    <div className="grid gap-5 sm:grid-cols-[0.38fr_0.62fr] sm:items-center">
-                      <div className="rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-4">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] text-orange-200">
-                          <Icon size={18} />
-                        </div>
-                        <div className="mt-5 space-y-2">
-                          <div className="h-2 rounded-full bg-white/12" />
-                          <div className="h-2 w-4/5 rounded-full bg-white/10" />
-                          <div className="h-16 rounded-[18px] border border-white/8 bg-white/[0.03]" />
-                        </div>
-                      </div>
-                      <div>
-                        <h3 className="text-2xl font-semibold text-white">{card.title}</h3>
-                        <p className="mt-3 text-sm leading-7 text-white/60">{card.body}</p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="overflow-hidden rounded-[30px] border border-white/8 bg-[#0f1015]">
+              <div className="flex items-center gap-2 border-b border-white/8 px-4 py-3">
+                <span className="h-2.5 w-2.5 rounded-full bg-red-300/80" />
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-300/80" />
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-300/80" />
+                <span className="ml-3 text-xs uppercase tracking-[0.18em] text-white/42">Builder demo</span>
+              </div>
+              <div className="bg-black">
+                <video
+                  ref={productVideoRef}
+                  className="h-auto w-full"
+                  src="/product-view-demo.mov"
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  onTimeUpdate={handleProductVideoTimeUpdate}
+                />
+              </div>
             </div>
           </div>
         </div>

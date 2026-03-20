@@ -111,6 +111,8 @@ export interface BusinessDetails {
   services: ServiceOptions;
   primaryCta: PrimaryCta;
   menu: MenuItem[];
+  menuSourceText?: string;
+  menuSourceImages?: string[];
   signatureDishes: string[];
   ordering: OrderingSetup;
   reservations: ReservationSetup;

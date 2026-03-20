@@ -31,25 +31,36 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
   const [publishForm, setPublishForm] = useState({ name: '', email: '', business: '' });
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const latestGenerationIdRef = useRef(0);
+  const generatedForDetailsRef = useRef<string | null>(null);
 
   const performGeneration = async (instruction?: string, assistantImage?: string | null) => {
     if (!details) return;
+    const generationId = ++latestGenerationIdRef.current;
     setIsUpdating(true);
     setError(null);
 
     try {
       console.log('Starting generation...');
       const result = await generateWebsiteHtml(details, instruction, html, assistantImage || undefined);
+      if (generationId !== latestGenerationIdRef.current) {
+        return;
+      }
       console.log('Generation complete, HTML length:', result?.length);
       setHtml(result);
       setError(null);
     } catch (err) {
+      if (generationId !== latestGenerationIdRef.current) {
+        return;
+      }
       const errorMsg = err instanceof Error ? err.message : String(err);
       console.error('Generation failed:', errorMsg);
       setError(errorMsg);
       setHtml('');
     } finally {
-      setIsUpdating(false);
+      if (generationId === latestGenerationIdRef.current) {
+        setIsUpdating(false);
+      }
     }
   };
 
@@ -58,6 +69,11 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
       navigate('/create');
       return;
     }
+    const detailsKey = JSON.stringify(details);
+    if (generatedForDetailsRef.current === detailsKey) {
+      return;
+    }
+    generatedForDetailsRef.current = detailsKey;
     performGeneration();
   }, [details, navigate]);
 

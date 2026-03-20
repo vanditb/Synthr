@@ -73,6 +73,8 @@ const mapBusinessDetailsToGenerationPayload = (details: BusinessDetails) => {
     // New structured fields
     brand: details.brand,
     primaryCta: details.primaryCta,
+    menuSourceText: details.menuSourceText || '',
+    menuSourceImages: details.menuSourceImages || [],
     signatureDishes: details.signatureDishes,
     services: details.services,
     ordering: {

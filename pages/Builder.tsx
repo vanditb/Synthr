@@ -98,6 +98,8 @@ const createInitialDetails = (): BusinessDetails => ({
   },
   primaryCta: 'reservations',
   menu: [createEmptyMenuItem(), createEmptyMenuItem(), createEmptyMenuItem()],
+  menuSourceText: '',
+  menuSourceImages: [],
   signatureDishes: [],
   ordering: {
     enabled: false,
@@ -518,6 +520,94 @@ export const Builder: React.FC<{ setDetails: (d: BusinessDetails) => void }> = (
     }));
   };
 
+  const handleMenuImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    const uploaded = await Promise.all(
+      files.map(async (file) => {
+        try {
+          return await compressImage(file, 'food');
+        } catch (_err) {
+          return await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              if (typeof reader.result === 'string') {
+                resolve(reader.result);
+              } else {
+                reject(new Error('File read failed'));
+              }
+            };
+            reader.onerror = () => reject(new Error('File read failed'));
+            reader.readAsDataURL(file);
+          });
+        }
+      })
+    );
+
+    setFormData((prev) => ({
+      ...prev,
+      menuSourceImages: [...(prev.menuSourceImages || []), ...uploaded],
+    }));
+
+    event.target.value = '';
+  };
+
+  const handleRemoveMenuImage = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      menuSourceImages: (prev.menuSourceImages || []).filter((_, imageIndex) => imageIndex !== index),
+    }));
+  };
+
+  const parseMenuSourceText = () => {
+    const source = (formData.menuSourceText || '').trim();
+    if (!source) return;
+
+    const lines = source
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const parsed: MenuItem[] = [];
+    let currentCategory = 'Featured';
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      const nextLine = lines[index + 1] || '';
+
+      if (!/\d/.test(line) && (/[:]{1}$/.test(line) || line === line.toUpperCase() || line.length < 24)) {
+        currentCategory = line.replace(/:$/, '');
+        continue;
+      }
+
+      const priceMatch = line.match(/(\$?\d+(?:\.\d{1,2})?)/);
+      if (!priceMatch) continue;
+
+      const price = priceMatch[1].startsWith('$') ? priceMatch[1] : `$${priceMatch[1]}`;
+      const name = line.replace(priceMatch[0], '').replace(/[-–—|]+/g, ' ').trim();
+      const description =
+        nextLine && !/(\$?\d+(?:\.\d{1,2})?)/.test(nextLine) && nextLine.length > 4 ? nextLine : '';
+
+      if (name) {
+        parsed.push({
+          name,
+          description,
+          price,
+          category: currentCategory,
+          dietary: [],
+        });
+      }
+    }
+
+    if (!parsed.length) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      menu: [...prev.menu.filter((item) => item.name.trim()), ...parsed],
+    }));
+  };
+
   const importMenuFromBulkPaste = () => {
     const parsed = menuBulkPaste
       .split('\n')
@@ -567,6 +657,8 @@ export const Builder: React.FC<{ setDetails: (d: BusinessDetails) => void }> = (
         category: item.category.trim(),
       }))
       .filter((item) => item.name && item.description && item.price && item.category),
+    menuSourceText: details.menuSourceText?.trim() || '',
+    menuSourceImages: details.menuSourceImages || [],
     signatureDishes: details.signatureDishes,
     location: {
       ...details.location,
@@ -950,22 +1042,61 @@ export const Builder: React.FC<{ setDetails: (d: BusinessDetails) => void }> = (
 
           {showBulkPaste ? (
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              <p className="mb-3 text-sm text-white/58">Use one line per item: Name | Description | Price | Category</p>
+              <p className="mb-3 text-sm text-white/58">Paste menu text and we’ll turn it into item rows.</p>
               <textarea
-                value={menuBulkPaste}
-                onChange={(event) => setMenuBulkPaste(event.target.value)}
+                value={formData.menuSourceText || menuBulkPaste}
+                onChange={(event) => {
+                  setMenuBulkPaste(event.target.value);
+                  setFormData((prev) => ({ ...prev, menuSourceText: event.target.value }));
+                }}
                 className={`${inputClassName} min-h-[150px] resize-none`}
                 placeholder={'Margherita Pizza | Tomato, mozzarella, basil | $18 | Pizza\nRigatoni Vodka | Tomato cream sauce | $21 | Pasta'}
               />
-              <button
-                type="button"
-                onClick={importMenuFromBulkPaste}
-                className="mt-4 rounded-full border border-orange-300/30 bg-orange-400/10 px-4 py-2.5 text-sm text-white transition hover:bg-orange-400/16"
-              >
-                Import lines
-              </button>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={importMenuFromBulkPaste}
+                  className="rounded-full border border-orange-300/30 bg-orange-400/10 px-4 py-2.5 text-sm text-white transition hover:bg-orange-400/16"
+                >
+                  Import lines
+                </button>
+                <button
+                  type="button"
+                  onClick={parseMenuSourceText}
+                  className="rounded-full border border-white/10 px-4 py-2.5 text-sm text-white/78 transition hover:bg-white/[0.05]"
+                >
+                  Parse pasted menu
+                </button>
+              </div>
             </div>
           ) : null}
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="mb-3 text-sm text-white/58">Upload a menu image</div>
+            <label className="flex cursor-pointer items-center justify-center rounded-2xl border border-dashed border-white/14 px-4 py-8 text-sm text-white/72 transition hover:border-white/22 hover:bg-white/[0.04]">
+              <input type="file" accept="image/*" multiple onChange={handleMenuImageUpload} className="hidden" />
+              <span>Upload menu photo</span>
+            </label>
+
+            {(formData.menuSourceImages || []).length > 0 ? (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {(formData.menuSourceImages || []).map((image, index) => (
+                  <div key={index} className="overflow-hidden rounded-2xl border border-white/10 bg-black/10">
+                    <div className="relative aspect-[4/3]">
+                      <img src={image} alt={`Menu upload ${index + 1}`} className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveMenuImage(index)}
+                        className="absolute right-3 top-3 rounded-full border border-black/10 bg-black/45 p-2 text-white transition hover:bg-black/60"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
       );
     }

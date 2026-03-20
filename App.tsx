@@ -64,6 +64,8 @@ const migrateStoredDetails = (raw: any): BusinessDetails | null => {
           dietary: Array.isArray(item?.dietary) ? item.dietary : [],
         }))
       : [],
+    menuSourceText: '',
+    menuSourceImages: [],
     signatureDishes: Array.isArray(raw.menu) ? raw.menu.slice(0, 3).map((item: any) => item?.name).filter(Boolean) : [],
     ordering: {
       enabled: Boolean(raw.onlineOrdering?.acceptOrders),

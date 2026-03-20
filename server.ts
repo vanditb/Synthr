@@ -276,10 +276,34 @@ const ensureTailwindCdn = (html: string): string => {
   return html.replace(/<html[^>]*>/i, (match) => `${match}\n<head>\n  ${cdnTag}\n</head>`);
 };
 
-const ensureDesignSafetyStyles = (html: string, style?: string): string => {
+const getThemePalette = (cuisineType?: string, style?: string, tone?: string) => {
+  const cuisine = (cuisineType || '').toLowerCase();
+  const styleKey = (style || '').toLowerCase();
+  const toneKey = (tone || '').toLowerCase();
+
+  if (cuisine.includes('indian')) {
+    return { body: '#fff8f1', surface: '#fff1e4', accent: '#c2410c', accentSoft: '#fed7aa', ink: '#431407' };
+  }
+  if (cuisine.includes('italian')) {
+    return { body: '#fffaf5', surface: '#fef2f2', accent: '#b91c1c', accentSoft: '#fecaca', ink: '#3f1d1d' };
+  }
+  if (cuisine.includes('japanese')) {
+    return { body: '#f8fafc', surface: '#eef2ff', accent: '#1d4ed8', accentSoft: '#bfdbfe', ink: '#172554' };
+  }
+  if (styleKey.includes('luxury') || toneKey.includes('upscale')) {
+    return { body: '#fcfaf7', surface: '#f5efe5', accent: '#9a6700', accentSoft: '#f5d48f', ink: '#2b2115' };
+  }
+  if (styleKey.includes('casual')) {
+    return { body: '#fffaf0', surface: '#ffedd5', accent: '#c2410c', accentSoft: '#fdba74', ink: '#431407' };
+  }
+  return { body: '#fffaf5', surface: '#f8fafc', accent: '#c2410c', accentSoft: '#fed7aa', ink: '#1f2937' };
+};
+
+const ensureDesignSafetyStyles = (html: string, style?: string, cuisineType?: string, tone?: string): string => {
   if (/<style[^>]*data-synthr-safety/i.test(html)) return html;
 
   const styleKey = (style || '').toLowerCase();
+  const palette = getThemePalette(cuisineType, style, tone);
   let fontLink = 'https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800&display=swap';
   let bodyFont = "'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif";
   let headingFont = "'Playfair Display', 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif";
@@ -309,12 +333,37 @@ const ensureDesignSafetyStyles = (html: string, style?: string): string => {
 
   const safetyStyle = `
   <style data-synthr-safety>
-    :root { color-scheme: light; }
+    :root {
+      color-scheme: light;
+      --synthr-body: ${palette.body};
+      --synthr-surface: ${palette.surface};
+      --synthr-accent: ${palette.accent};
+      --synthr-accent-soft: ${palette.accentSoft};
+      --synthr-ink: ${palette.ink};
+    }
     *, *::before, *::after { box-sizing: border-box; }
-    body { font-family: ${bodyFont}; color: #0f172a; background-color: #f8fafc; }
+    body { font-family: ${bodyFont}; color: var(--synthr-ink); background-color: var(--synthr-body); }
     h1, h2, h3, h4, h5, h6 { font-family: ${headingFont}; letter-spacing: -0.02em; }
     img, video { max-width: 100%; height: auto; }
     body { overflow-x: hidden; }
+    section:not([style*="background-image"]) { position: relative; }
+    section:not([style*="background-image"]):nth-of-type(odd) { background: linear-gradient(180deg, var(--synthr-surface), #ffffff) !important; }
+    section:not([style*="background-image"]):nth-of-type(even) { background: #ffffff !important; }
+    section:not([style*="background-image"]) h1,
+    section:not([style*="background-image"]) h2,
+    section:not([style*="background-image"]) h3,
+    section:not([style*="background-image"]) h4,
+    section:not([style*="background-image"]) h5,
+    section:not([style*="background-image"]) h6,
+    section:not([style*="background-image"]) p,
+    section:not([style*="background-image"]) li,
+    section:not([style*="background-image"]) span,
+    section:not([style*="background-image"]) label { color: var(--synthr-ink) !important; text-shadow: none !important; }
+    .bg-white, .bg-slate-50, .bg-orange-50, .bg-amber-50 { color: var(--synthr-ink) !important; }
+    .bg-white h1, .bg-white h2, .bg-white h3, .bg-white h4, .bg-white p, .bg-white span,
+    .bg-slate-50 h1, .bg-slate-50 h2, .bg-slate-50 h3, .bg-slate-50 h4, .bg-slate-50 p, .bg-slate-50 span,
+    .bg-orange-50 h1, .bg-orange-50 h2, .bg-orange-50 h3, .bg-orange-50 h4, .bg-orange-50 p, .bg-orange-50 span,
+    .bg-amber-50 h1, .bg-amber-50 h2, .bg-amber-50 h3, .bg-amber-50 h4, .bg-amber-50 p, .bg-amber-50 span { color: var(--synthr-ink) !important; text-shadow: none !important; }
     header { position: relative; }
     header nav {
       position: sticky;
@@ -346,6 +395,8 @@ const ensureDesignSafetyStyles = (html: string, style?: string): string => {
     *[style*="background-image"] > * { position: relative; }
     a, button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; max-width: 100%; }
     nav { flex-wrap: wrap; row-gap: 0.5rem; }
+    a:not([class*="bg-"]) { color: var(--synthr-accent); }
+    button, a[class*="bg-amber"], a[class*="bg-orange"] { box-shadow: 0 10px 30px -20px var(--synthr-accent); }
   </style>`;
 
   if (/<head[^>]*>/i.test(html)) {
@@ -911,6 +962,8 @@ app.post("/api/generate", async (req: express.Request, res: express.Response) =>
       
       // Menu
       menu,
+      menuSourceText,
+      menuSourceImages,
       
       // Ordering & Reservations
       onlineOrdering,
@@ -1109,6 +1162,8 @@ ${shortDescription || description}
 ${fullStory && founderName ? `
 Founded by ${founderName}${yearFounded ? ` in ${yearFounded}` : ''}.
 ${fullStory}` : ''}
+${menuSourceText ? `\nRAW MENU TEXT:\n${menuSourceText}` : ''}
+${Array.isArray(menuSourceImages) && menuSourceImages.length ? `\nMENU IMAGES PROVIDED: ${menuSourceImages.length}` : ''}
 
 BRAND DIRECTION:
 Atmosphere: ${brand?.atmosphere || 'Not specified'}
@@ -1155,6 +1210,14 @@ REQUIREMENTS:
 - Create a complete, valid HTML document (no markdown)
 - Use Tailwind CSS via CDN
 - Use the provided IMAGE ASSETS URLs. Ensure images are cuisine-appropriate and consistent.
+- Use color intentionally. Do not default to an all-white website.
+- Build a palette from the cuisine, tone, and style:
+  - Indian: warm saffron, amber, deep spice tones
+  - Italian: rich neutrals, olive, tomato, stone, warm cream
+  - Japanese: restrained ink, indigo, slate, off-white
+  - Casual/cafe: lighter, warmer surfaces with clear contrast
+  - Luxury/upscale: richer neutrals, deep accents, premium contrast
+- Ensure text contrast is always readable. Never place white text on a white or very light background.
 - Do not add or mix cuisines. If cuisine is Italian, only show Italian dishes. If Indian, only Indian dishes.
 - Do not use any single image URL more than twice.
 - Focus ONLY on visual design and layout. Do NOT change functionality or data.
@@ -1212,7 +1275,7 @@ Return ONLY raw HTML - no markdown code blocks, no explanations.`;
     cleanHtml = cleanHtml.trim();
 
     cleanHtml = ensureTailwindCdn(cleanHtml);
-    cleanHtml = ensureDesignSafetyStyles(cleanHtml, style);
+    cleanHtml = ensureDesignSafetyStyles(cleanHtml, style, cuisineType, tone);
     cleanHtml = normalizeOnPageLinks(cleanHtml);
     cleanHtml = ensureSmoothScrollScript(cleanHtml);
     cleanHtml = injectFallbackGallery(cleanHtml, imageAssets);
