@@ -104,12 +104,12 @@ const workflowCards = [
   {
     title: 'Publish fast',
     description: 'Launch on a Synthr subdomain in a few clicks.',
-    meta: 'marea.synthr.site',
+    meta: 'yourrestaurant.synthr.site',
   },
   {
     title: 'Bring your own domain',
     description: 'Connect your restaurant domain when you are ready.',
-    meta: 'www.mareanyc.com',
+    meta: 'www.yourrestaurant.com',
   },
   {
     title: 'Keep improving',
@@ -193,7 +193,7 @@ export const Landing: React.FC = () => {
                 <ArrowRight size={16} />
               </button>
               <button
-                onClick={() => document.getElementById('showcase')?.scrollIntoView({ behavior: 'smooth' })}
+                onClick={() => navigate('/examples')}
                 className="inline-flex items-center justify-center rounded-2xl border border-white/12 bg-white/[0.03] px-6 py-3.5 text-sm font-semibold text-white/78 transition hover:border-white/20 hover:bg-white/[0.05]"
               >
                 View examples
@@ -479,7 +479,7 @@ export const Landing: React.FC = () => {
           <div className="grid gap-5 lg:grid-cols-3">
             {workflowCards.map((card, index) => (
               <div key={card.title} className={`${surfaceClass} overflow-hidden p-5`}>
-                <div className="rounded-[24px] bg-[#111217] p-5">
+                <div className="flex h-full flex-col rounded-[24px] bg-[#111217] p-5">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold uppercase tracking-[0.18em] text-orange-200/80">
                       0{index + 1}
@@ -490,8 +490,10 @@ export const Landing: React.FC = () => {
                   </div>
                   <h3 className="mt-5 text-2xl font-semibold text-white">{card.title}</h3>
                   <p className="mt-3 text-sm leading-7 text-white/60">{card.description}</p>
-                  <div className="mt-6 rounded-[22px] border border-orange-300/16 bg-gradient-to-r from-orange-500/8 to-amber-500/8 p-4 text-sm text-white/74">
+                  <div className="mt-auto pt-10">
+                    <div className="rounded-[22px] border border-orange-300/16 bg-gradient-to-r from-orange-500/8 to-amber-500/8 p-4 text-sm text-white/74">
                     {card.meta}
+                    </div>
                   </div>
                 </div>
               </div>

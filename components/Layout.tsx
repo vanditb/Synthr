@@ -5,7 +5,7 @@ import { UtensilsCrossed } from 'lucide-react';
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const isPreview = location.pathname === '/preview';
-  const isMarketingDark = ['/', '/about', '/pricing', '/create'].includes(location.pathname);
+  const isMarketingDark = ['/', '/about', '/examples', '/pricing', '/create'].includes(location.pathname);
 
   if (isPreview) {
     return <main className="h-screen w-screen overflow-hidden bg-gray-50">{children}</main>;
@@ -28,6 +28,12 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             <span className={`font-bold text-xl tracking-tight ${isMarketingDark ? 'text-white' : 'text-stone-900'}`}>Synthr</span>
           </Link>
           <div className="flex items-center gap-4">
+            <Link
+              to="/examples"
+              className={`text-sm font-semibold transition ${isMarketingDark ? 'text-white/68 hover:text-white' : 'text-stone-700 hover:text-stone-900'}`}
+            >
+              Examples
+            </Link>
             <Link
               to="/pricing"
               className={`text-sm font-semibold transition ${isMarketingDark ? 'text-white/68 hover:text-white' : 'text-stone-700 hover:text-stone-900'}`}

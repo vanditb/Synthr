@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Landing } from './pages/Landing';
 import { About } from './pages/About';
+import { Examples } from './pages/Examples';
 import { Pricing } from './pages/Pricing';
 import { Builder } from './pages/Builder';
 import { Preview } from './pages/Preview';
@@ -129,6 +130,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/about" element={<About />} />
+          <Route path="/examples" element={<Examples />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/create" element={<Builder setDetails={setBusinessDetails} />} />
           <Route path="/preview" element={<Preview details={businessDetails} />} />

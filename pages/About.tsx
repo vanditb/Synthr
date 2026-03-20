@@ -102,7 +102,7 @@ export const About: React.FC = () => {
               <ArrowRight size={16} />
             </Link>
             <Link
-              to="/"
+              to="/examples"
               className="inline-flex items-center justify-center rounded-2xl border border-white/12 bg-white/[0.03] px-6 py-3.5 text-sm font-semibold text-white/78 transition hover:border-white/20 hover:bg-white/[0.05]"
             >
               See examples
