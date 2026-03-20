@@ -185,6 +185,21 @@ const hashString = (value: string): number => {
 
 const pickDeterministic = <T,>(items: T[], seed: number): T => items[Math.abs(seed) % items.length];
 
+const formatMenuPrice = (price: unknown): string => {
+  if (typeof price === 'number' && Number.isFinite(price)) {
+    return `$${price.toFixed(2)}`;
+  }
+
+  const trimmed = String(price ?? '').trim();
+  if (!trimmed) return '';
+  return trimmed.startsWith('$') ? trimmed : `$${trimmed}`;
+};
+
+const hasCuisinePool = (cuisineType?: string): boolean => {
+  const key = (cuisineType || '').toLowerCase();
+  return key.includes('italian') || key.includes('japanese');
+};
+
 const getCuisinePool = (cuisineType: string | undefined): Record<ImageAsset['role'], ImageAsset[]> => {
   const key = (cuisineType || '').toLowerCase();
   if (key.includes('italian')) return cuisineImagePools.italian;
@@ -233,7 +248,11 @@ const buildImageAssets = async (
     });
 
     const seed = hashString(`${name || ''}:${cuisineType || ''}:${style || ''}`);
-    const flattenedPool = (Object.values(poolByCuisine) as ImageAsset[][]).flat();
+    const flattenedPoolAll = (Object.values(poolByCuisine) as ImageAsset[][]).flat();
+    const shouldRestrictFood = Boolean(cuisineType && !hasCuisinePool(cuisineType));
+    const flattenedPool = shouldRestrictFood
+      ? flattenedPoolAll.filter((img) => ['hero', 'interior', 'bar', 'logo'].includes(img.role))
+      : flattenedPoolAll;
     let cursor = 0;
     while (assets.length < 8 && flattenedPool.length > 0) {
       const fallback = pickDeterministic(flattenedPool, seed + cursor);
@@ -359,6 +378,61 @@ const ensureSmoothScrollScript = (html: string): string => {
     return html.replace(/<\/body>/i, `${script}\n</body>`);
   }
   return `${html}\n${script}`;
+};
+
+const normalizeOnPageLinks = (html: string): string => {
+  const aliasMap: Array<{ pattern: RegExp; target: string }> = [
+    { pattern: /(home|top|start)/i, target: '#home' },
+    { pattern: /(about|story)/i, target: '#about' },
+    { pattern: /(menu|food|dishes)/i, target: '#menu' },
+    { pattern: /(featured)/i, target: '#featured' },
+    { pattern: /(experience|gallery|atmosphere)/i, target: '#experience' },
+    { pattern: /(hours|schedule)/i, target: '#hours' },
+    { pattern: /(order|ordering|pickup|delivery)/i, target: '#order' },
+    { pattern: /(reserve|reservation|book|booking)/i, target: '#reserve' },
+    { pattern: /(contact|location|visit|find)/i, target: '#contact' },
+  ];
+
+  const normalizeHash = (value: string) => {
+    const clean = value.trim().replace(/^#/, '');
+    if (!clean) return '#home';
+    const alias = aliasMap.find((entry) => entry.pattern.test(clean));
+    return alias?.target || `#${clean}`;
+  };
+
+  return html.replace(/<a\b([^>]*?)href=(["'])([^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi, (match, before, quote, href, after, inner) => {
+    const rawHref = String(href || '').trim();
+    if (!rawHref) return match;
+    if (/^(https?:|mailto:|tel:|javascript:)/i.test(rawHref)) return match;
+
+    const textContent = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const candidate = rawHref.startsWith('#') ? rawHref : `${rawHref} ${textContent}`;
+    const target = normalizeHash(candidate);
+    return `<a${before}href=${quote}${target}${quote}${after}>${inner}</a>`;
+  });
+};
+
+const enforceMenuSection = (html: string, menuHTML: string): string => {
+  if (!menuHTML || !menuHTML.trim()) return html;
+  const section = `
+  <section id="menu" class="py-16 bg-white">
+    <div class="max-w-6xl mx-auto px-6">
+      <h2 class="text-3xl font-bold text-slate-900 mb-8">Menu</h2>
+      <div class="space-y-10">
+        ${menuHTML}
+      </div>
+    </div>
+  </section>
+  `;
+
+  const menuSectionMatch = html.match(/<section[^>]*id=["']menu["'][^>]*>[\s\S]*?<\/section>/i);
+  if (menuSectionMatch) {
+    return html.replace(menuSectionMatch[0], section);
+  }
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, `${section}\n</body>`);
+  }
+  return `${html}\n${section}`;
 };
 
 const applyHeroBackground = (html: string, imageUrl?: string, instruction?: string): string => {
@@ -816,6 +890,13 @@ app.post("/api/generate", async (req: express.Request, res: express.Response) =>
       hours,
       pages,
       description,
+      brand,
+      primaryCta,
+      signatureDishes,
+      services,
+      ordering,
+      domainPreference,
+      advanced,
       
       // Services
       dineIn,
@@ -885,7 +966,7 @@ app.post("/api/generate", async (req: express.Request, res: express.Response) =>
                 <h4 class="text-base font-semibold text-slate-900">${item.name}</h4>
                 <p class="text-slate-600 text-sm mt-1">${item.description}</p>
               </div>
-              <span class="text-base font-semibold text-amber-600">$${item.price.toFixed(2)}</span>
+              <span class="text-base font-semibold text-amber-600">${formatMenuPrice(item.displayPrice ?? item.price)}</span>
             </div>
           `
             )
@@ -984,6 +1065,11 @@ app.post("/api/generate", async (req: express.Request, res: express.Response) =>
       ? `
 🖼️ IMAGE ASSETS (use these exact URLs, do not invent new ones):
 ${imageAssets.map((img) => `- ${img.role.toUpperCase()}: ${img.url} (alt: ${img.alt})`).join('\n')}
+
+IMAGE RULES:
+- Images must match the cuisine and theme. Do not use unrelated food photos.
+- Use ONLY the provided image assets. Do not invent or fetch new URLs.
+- Keep image usage consistent across hero, menu, and gallery.
 `
       : '';
 
@@ -1024,17 +1110,28 @@ ${fullStory && founderName ? `
 Founded by ${founderName}${yearFounded ? ` in ${yearFounded}` : ''}.
 ${fullStory}` : ''}
 
+BRAND DIRECTION:
+Atmosphere: ${brand?.atmosphere || 'Not specified'}
+Audience: ${brand?.audience || 'Not specified'}
+Keywords: ${Array.isArray(brand?.keywords) && brand.keywords.length ? brand.keywords.join(', ') : 'Not specified'}
+Hero focus: ${brand?.heroFocus || 'Not specified'}
+Primary CTA: ${primaryCta || 'Not specified'}
+Publishing intent: ${domainPreference || 'Not specified'}
+
 🍽️ MENU:
-${menu?.map((item: any) => `- ${item.name}: ${item.description} ($${item.price.toFixed(2)})`).join('\n')}
+${menu?.map((item: any) => `- ${item.name}: ${item.description} (${formatMenuPrice(item.displayPrice ?? item.price)})`).join('\n')}
+${Array.isArray(signatureDishes) && signatureDishes.length ? `Signature dishes: ${signatureDishes.join(', ')}` : ''}
 
 ⏰ HOURS:
 ${Object.entries(hours || {}).map(([day, time]) => `${day}: ${time}`).join('\n')}
 
 🛒 SERVICES:
 ${[dineIn && '✓ Dine-in', takeout && '✓ Takeout', delivery && '✓ Delivery'].filter(Boolean).join(', ')}
+${[services?.catering && '✓ Catering', services?.privateDining && '✓ Private dining'].filter(Boolean).join(', ')}
 
 📱 ONLINE ORDERING:
 ${onlineOrdering?.acceptOrders ? `Available on: ${onlineOrdering.platforms.join(', ')} - URL: ${onlineOrdering.customURL}` : 'Not available'}
+${ordering?.enabled ? `Ordering provider: ${ordering.provider} - URL: ${ordering.url || 'Not provided'}` : ''}
 
 📅 RESERVATIONS:
 ${reservations?.acceptReservations ? `Available on: ${reservations.platforms.join(', ')} - URL: ${reservations.url}` : 'Not available'}
@@ -1057,8 +1154,8 @@ ${imageInstructions}
 REQUIREMENTS:
 - Create a complete, valid HTML document (no markdown)
 - Use Tailwind CSS via CDN
-- Use the provided IMAGE ASSETS URLs. Ensure at least 6–10 images are visible on the page.
-- Images must be cuisine-appropriate and high-quality (use only the provided URLs; do not invent or use placeholders).
+- Use the provided IMAGE ASSETS URLs. Ensure images are cuisine-appropriate and consistent.
+- Do not add or mix cuisines. If cuisine is Italian, only show Italian dishes. If Indian, only Indian dishes.
 - Do not use any single image URL more than twice.
 - Focus ONLY on visual design and layout. Do NOT change functionality or data.
 - Mobile-responsive design
@@ -1088,6 +1185,7 @@ REQUIREMENTS:
 - Fast-loading, optimal performance
 - Professional footer with all contact information
 - No empty sections or placeholder text. If a detail is missing, write tasteful, generic copy without inventing facts like address, phone, or prices.
+- Menu MUST use only the provided items exactly as listed. Do not add, remove, or change any menu item.
 
 Return ONLY raw HTML - no markdown code blocks, no explanations.`;
 
@@ -1115,9 +1213,11 @@ Return ONLY raw HTML - no markdown code blocks, no explanations.`;
 
     cleanHtml = ensureTailwindCdn(cleanHtml);
     cleanHtml = ensureDesignSafetyStyles(cleanHtml, style);
+    cleanHtml = normalizeOnPageLinks(cleanHtml);
     cleanHtml = ensureSmoothScrollScript(cleanHtml);
     cleanHtml = injectFallbackGallery(cleanHtml, imageAssets);
     cleanHtml = applyHeroBackground(cleanHtml, assistantImage, customInstruction);
+    cleanHtml = enforceMenuSection(cleanHtml, menuHTML);
     
     console.log('🧹 Cleaned HTML length:', cleanHtml.length);
     
@@ -1197,7 +1297,7 @@ app.post("/api/assistant", async (req: express.Request, res: express.Response) =
       .filter((msg: any) => msg.content.length > 0);
 
     const context = details
-      ? `Business context:\nName: ${details.name || "Unknown"}\nType: ${details.type || "Unknown"}\nCuisine: ${details.cuisineType || "Not specified"}\nStyle: ${details.style || "Not specified"}\nTone: ${details.tone || "Not specified"}\nCity: ${details.city || "Not specified"}\nTagline: ${details.tagline || "Not specified"}`
+      ? `Business context:\nName: ${details.name || "Unknown"}\nType: ${details.type || "Unknown"}\nCuisine: ${details.cuisineType || "Not specified"}\nStyle: ${details.style || "Not specified"}\nTone: ${details.tone || "Not specified"}\nCity: ${details.location?.city || "Not specified"}\nBrand summary: ${details.brand?.summary || "Not specified"}\nPrimary CTA: ${details.primaryCta || "Not specified"}`
       : "Business context: Not provided.";
 
     const systemPrompt = `You are an AI website editor inside a live preview environment.\nFor every user request, execute the change immediately and then respond with a short confirmation.\nDo not ask follow-up questions unless absolutely necessary.\nDo not provide suggestions or options unless the user explicitly asks.\nKeep replies under 1-2 sentences, direct, and action-based.\nIf an image is attached and the user references it, assume it should be applied to the requested section with a dark overlay and full-width cover.\nDo not claim to have performed actions you did not do.`;

@@ -35,7 +35,7 @@ export default async function handler(req: any, res: any) {
       .filter((msg: any) => msg.content.length > 0);
 
     const context = details
-      ? `Business context:\nName: ${details.name || 'Unknown'}\nType: ${details.type || 'Unknown'}\nCuisine: ${details.cuisineType || 'Not specified'}\nStyle: ${details.style || 'Not specified'}\nTone: ${details.tone || 'Not specified'}\nCity: ${details.city || 'Not specified'}\nTagline: ${details.tagline || 'Not specified'}`
+      ? `Business context:\nName: ${details.name || 'Unknown'}\nType: ${details.type || 'Unknown'}\nCuisine: ${details.cuisineType || 'Not specified'}\nStyle: ${details.style || 'Not specified'}\nTone: ${details.tone || 'Not specified'}\nCity: ${details.location?.city || 'Not specified'}\nBrand summary: ${details.brand?.summary || 'Not specified'}\nPrimary CTA: ${details.primaryCta || 'Not specified'}`
       : 'Business context: Not provided.';
 
     const systemPrompt = `You are an AI website editor inside a live preview environment.\nFor every user request, execute the change immediately and then respond with a short confirmation.\nDo not ask follow-up questions unless absolutely necessary.\nDo not provide suggestions or options unless the user explicitly asks.\nKeep replies under 1-2 sentences, direct, and action-based.\nIf an image is attached and the user references it, assume it should be applied to the requested section with a dark overlay and full-width cover.\nDo not claim to have performed actions you did not do.`;

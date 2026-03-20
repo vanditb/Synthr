@@ -1,271 +1,668 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, UtensilsCrossed, Clock, Sparkles } from 'lucide-react';
+import {
+  ArrowRight,
+  Check,
+  Globe,
+  LayoutTemplate,
+  MonitorSmartphone,
+  RefreshCcw,
+  Sparkles,
+  WandSparkles,
+} from 'lucide-react';
 
-const TypingText = ({ text }: { text: string }) => {
-  const [displayText, setDisplayText] = useState('');
-
-  useEffect(() => {
-    let index = 0;
-    let timeout: ReturnType<typeof setTimeout>;
-
-    const type = () => {
-      setDisplayText(text.slice(0, index));
-      if (index <= text.length) {
-        index += 1;
-        timeout = setTimeout(type, 90);
-      }
-    };
-
-    type();
-    return () => {
-      if (timeout) clearTimeout(timeout);
-    };
-  }, [text]);
-
-  return (
-    <span className="inline-flex items-center">
-      {displayText || ' '}
-      <span className="inline-block w-[2px] h-[1em] bg-amber-600 align-middle ml-1 animate-pulse" />
-    </span>
-  );
+type ShowcaseItem = {
+  key: string;
+  label: string;
+  title: string;
+  description: string;
+  chips: string[];
+  image: string;
+  mobileImage: string;
+  brand: string;
+  accent: string;
+  glow: string;
+  siteTitle: string;
+  nav: string[];
 };
+
+const showcaseItems: ShowcaseItem[] = [
+  {
+    key: 'fine-dining',
+    label: 'Fine Dining',
+    title: 'A fine dining site built for reservations.',
+    description: 'Elegant menus, private dining details, and booking prompts that feel considered.',
+    chips: ['Tasting Menu', 'Wine Pairings', 'Reservations'],
+    image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1600&q=80',
+    mobileImage: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=900&q=80',
+    brand: 'Atelier No. 9',
+    accent: 'from-amber-300 via-orange-300 to-rose-300',
+    glow: 'bg-orange-400/20',
+    siteTitle: 'Atelier No. 9',
+    nav: ['Menu', 'Story', 'Reserve'],
+  },
+  {
+    key: 'cafe',
+    label: 'Cafe',
+    title: 'A cafe site designed for daily traffic.',
+    description: 'Hours, pickup, and menu highlights stay visible for regulars and walk-ins.',
+    chips: ['Breakfast', 'Pickup', 'Seasonal Drinks'],
+    image: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=1600&q=80',
+    mobileImage: 'https://images.unsplash.com/photo-1445116572660-236099ec97a0?auto=format&fit=crop&w=900&q=80',
+    brand: 'Northline Cafe',
+    accent: 'from-sky-300 via-cyan-300 to-teal-300',
+    glow: 'bg-cyan-400/20',
+    siteTitle: 'Northline Cafe',
+    nav: ['Menu', 'Hours', 'Visit'],
+  },
+  {
+    key: 'bakery',
+    label: 'Bakery',
+    title: 'A bakery site built for pickup and preorders.',
+    description: 'Daily bakes, cake orders, and pickup windows are easy to browse fast.',
+    chips: ['Daily Bakes', 'Cake Orders', 'Pickup'],
+    image: 'https://images.unsplash.com/photo-1517433670267-08bbd4be890f?auto=format&fit=crop&w=1600&q=80',
+    mobileImage: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=900&q=80',
+    brand: 'Flour & Bloom',
+    accent: 'from-rose-300 via-orange-200 to-amber-200',
+    glow: 'bg-rose-400/20',
+    siteTitle: 'Flour & Bloom',
+    nav: ['Order', 'Cakes', 'Hours'],
+  },
+  {
+    key: 'pizzeria',
+    label: 'Pizzeria',
+    title: 'A pizzeria site made for quick decisions.',
+    description: 'Big menu moments, direct ordering, and clear location details help drive orders.',
+    chips: ['Order Direct', 'Lunch Specials', 'Slices'],
+    image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=1600&q=80',
+    mobileImage: 'https://images.unsplash.com/photo-1541745537411-b8046dc6d66c?auto=format&fit=crop&w=900&q=80',
+    brand: 'Brick Alley Pizza',
+    accent: 'from-red-300 via-orange-300 to-amber-300',
+    glow: 'bg-red-400/20',
+    siteTitle: 'Brick Alley Pizza',
+    nav: ['Menu', 'Order', 'Location'],
+  },
+  {
+    key: 'cocktail-bar',
+    label: 'Cocktail Bar',
+    title: 'A cocktail bar site built for nights out.',
+    description: 'Events, table bookings, and moody visuals make the evening plan feel real.',
+    chips: ['Late Night', 'Private Tables', 'Live Sets'],
+    image: 'https://images.unsplash.com/photo-1470337458703-46ad1756a187?auto=format&fit=crop&w=1600&q=80',
+    mobileImage: 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=900&q=80',
+    brand: 'Velvet Hour',
+    accent: 'from-fuchsia-300 via-violet-300 to-indigo-300',
+    glow: 'bg-fuchsia-400/20',
+    siteTitle: 'Velvet Hour',
+    nav: ['Cocktails', 'Events', 'Reserve'],
+  },
+];
+
+const capabilityPanels = [
+  {
+    title: 'Add your details',
+    subtitle: 'Menu, hours, bookings, location.',
+    icon: WandSparkles,
+  },
+  {
+    title: 'Get a site back',
+    subtitle: 'Real pages, not a rough draft.',
+    icon: LayoutTemplate,
+  },
+  {
+    title: 'Keep refining',
+    subtitle: 'Edit sections, regenerate, publish.',
+    icon: RefreshCcw,
+  },
+];
+
+const capabilityCards = [
+  {
+    title: 'Copy written for your brand',
+    body: 'Menus, story, and booking sections written in the style you choose.',
+    icon: Sparkles,
+  },
+  {
+    title: 'Menus and pages built for you',
+    body: 'Hours, contact, ordering, and reservations are already structured.',
+    icon: LayoutTemplate,
+  },
+  {
+    title: 'Looks great on any screen',
+    body: 'The site feels polished on desktop and mobile from the first pass.',
+    icon: MonitorSmartphone,
+  },
+];
+
+const workflowCards = [
+  {
+    title: 'Publish fast',
+    description: 'Launch on a Synthr subdomain in a few clicks.',
+    meta: 'marea.synthr.site',
+  },
+  {
+    title: 'Bring your own domain',
+    description: 'Connect your restaurant domain when you are ready.',
+    meta: 'www.mareanyc.com',
+  },
+  {
+    title: 'Keep improving',
+    description: 'Update sections and regenerate layouts without rebuilding from scratch.',
+    meta: '“Make it warmer and more reservation-focused”',
+  },
+];
+
+const surfaceClass =
+  'rounded-[30px] bg-white/[0.04] backdrop-blur-xl shadow-[0_30px_120px_rgba(0,0,0,0.30)]';
+
+const BrowserFrame = ({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) => (
+  <div className="overflow-hidden rounded-[28px] border border-white/10 bg-[#101116] shadow-[0_24px_80px_rgba(0,0,0,0.38)]">
+    <div className="flex items-center justify-between border-b border-white/8 bg-white/[0.03] px-4 py-3">
+      <div className="flex items-center gap-2">
+        <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
+        <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+        <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+      </div>
+      <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-white/48">
+        {title}
+      </span>
+    </div>
+    {children}
+  </div>
+);
 
 export const Landing: React.FC = () => {
   const navigate = useNavigate();
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setActiveIndex((prev) => (prev + 1) % showcaseItems.length);
+    }, 4200);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const active = showcaseItems[activeIndex];
 
   return (
-    <div>
-      {/* Hero Section with Restaurant Background */}
-      <section className="relative px-4 pt-20 pb-32 sm:pt-32 sm:pb-40 overflow-hidden min-h-screen flex items-center bg-gradient-to-br from-amber-50 via-orange-50 to-stone-100">
-        
-        {/* Premium Restaurant Background Image */}
-        <div 
-          className="absolute inset-0 opacity-10"
-          style={{
-            backgroundImage: 'url("https://images.unsplash.com/photo-1552566626-52f8b29e368c?w=1200&h=800&fit=crop")',
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            backgroundAttachment: 'fixed'
-          }}
-        ></div>
+    <div className="bg-[#09090d] text-white">
+      <section className="relative overflow-hidden px-4 pt-14 pb-20 sm:px-6 sm:pt-20 sm:pb-24">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(251,146,60,0.20),transparent_28%),radial-gradient(circle_at_82%_18%,rgba(249,115,22,0.12),transparent_22%),linear-gradient(180deg,#09090d_0%,#0d0d12_46%,#0a0a0f_100%)]" />
+        <div className="absolute left-1/2 top-16 h-72 w-72 -translate-x-1/2 rounded-full bg-orange-400/10 blur-3xl" />
+        <div className="absolute right-12 top-24 h-48 w-48 rounded-full bg-orange-300/8 blur-3xl" />
 
-        {/* Gradient Overlay for Better Text Readability */}
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white opacity-60"></div>
+        <div className="relative mx-auto grid max-w-7xl items-center gap-12 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="max-w-xl">
+            <h1 className="max-w-lg text-5xl font-semibold tracking-[-0.05em] text-white sm:text-6xl lg:text-7xl">
+              Build your restaurant website in minutes.
+            </h1>
+            <p className="mt-6 max-w-lg text-lg leading-8 text-white/62">
+              Add your menu, hours, and brand. Synthr turns it into a polished site you can publish fast.
+            </p>
 
-        {/* Decorative Elements */}
-        <div className="absolute top-20 right-10 w-40 h-40 bg-orange-200 rounded-full filter blur-3xl opacity-20"></div>
-        <div className="absolute bottom-20 left-10 w-60 h-60 bg-amber-300 rounded-full filter blur-3xl opacity-15"></div>
+            <div className="mt-9 flex flex-col gap-4 sm:flex-row">
+              <button
+                onClick={() => navigate('/create')}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-3.5 text-sm font-semibold text-white shadow-[0_18px_50px_rgba(249,115,22,0.28)] transition hover:from-orange-400 hover:to-amber-400"
+              >
+                Generate my site
+                <ArrowRight size={16} />
+              </button>
+              <button
+                onClick={() => document.getElementById('showcase')?.scrollIntoView({ behavior: 'smooth' })}
+                className="inline-flex items-center justify-center rounded-2xl border border-white/12 bg-white/[0.03] px-6 py-3.5 text-sm font-semibold text-white/78 transition hover:border-white/20 hover:bg-white/[0.05]"
+              >
+                View examples
+              </button>
+            </div>
 
-        {/* Animated UI Tabs Behind Hero Text */}
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute -top-16 -right-8 w-72 h-72 bg-amber-200/60 rounded-full blur-3xl"></div>
-          <div className="absolute -bottom-10 -left-8 w-72 h-72 bg-orange-200/60 rounded-full blur-3xl"></div>
+            <div className="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-sm text-white/58">
+              {['No commissions', 'Custom domains', 'Menus, bookings, direct traffic'].map((item) => (
+                <span key={item} className="inline-flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-orange-300" />
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
 
-          {/* Top-right "laptop tab" */}
-          <div className="absolute top-2 -right-20 sm:top-6 sm:-right-20 w-[40rem] sm:w-[56rem] opacity-40 animate-slide-in-right will-change-transform">
-            <div className="rounded-2xl border border-amber-200 bg-white/85 shadow-xl backdrop-blur-md overflow-hidden">
-              <div className="flex items-center gap-2 px-3 py-2 border-b border-amber-200 bg-white/90">
-                <span className="w-2 h-2 rounded-full bg-rose-400"></span>
-                <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                <span className="ml-2 text-[10px] font-semibold text-stone-500">Generating</span>
-              </div>
-              <div className="p-4 pb-12 space-y-2 relative min-h-[320px]">
-                <div className="absolute top-3 right-3 h-16 w-16">
-                  <svg
-                    viewBox="0 0 100 100"
-                    className="absolute inset-0 h-full w-full animate-spin"
-                    style={{ animationDuration: '12s' }}
+          <div className="relative">
+            <div className="absolute -left-5 top-8 hidden h-36 w-36 rounded-full bg-orange-400/14 blur-3xl lg:block" />
+            <div className="absolute -right-4 bottom-8 hidden h-36 w-36 rounded-full bg-amber-300/12 blur-3xl lg:block" />
+
+            <BrowserFrame title="Synthr Preview">
+              <div className="grid gap-4 p-4 lg:grid-cols-[1.05fr_0.95fr] lg:p-5">
+                <div className="overflow-hidden rounded-[24px] border border-white/8 bg-[#121319]">
+                  <div
+                    className="relative h-[400px] bg-cover bg-center"
+                    style={{
+                      backgroundImage:
+                        'linear-gradient(180deg,rgba(10,10,14,0.08),rgba(10,10,14,0.68)), url("https://images.unsplash.com/photo-1544148103-0773bf10d330?auto=format&fit=crop&w=1600&q=80")',
+                    }}
                   >
-                    <defs>
-                      <path
-                        id="genCirclePath"
-                        d="M50,50 m-35,0 a35,35 0 1,1 70,0 a35,35 0 1,1 -70,0"
-                      />
-                    </defs>
-                    <text fontSize="8" fill="#a16207" letterSpacing="2">
-                      <textPath href="#genCirclePath">
-                        Generating website • Generating website •
-                      </textPath>
-                    </text>
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="flex items-center justify-between px-5 py-4 text-xs uppercase tracking-[0.18em] text-white/60">
+                      <span>Marea House</span>
+                      <div className="flex gap-4">
+                        <span>Menu</span>
+                        <span>Story</span>
+                        <span>Reserve</span>
+                      </div>
+                    </div>
+                    <div className="absolute inset-x-0 bottom-0 p-6">
+                      <div className="max-w-md rounded-[24px] bg-[#0c0d11]/70 p-5 backdrop-blur-xl">
+                        <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+                          Coastal plates, candlelight tables, and reservations every night.
+                        </h2>
+                        <div className="mt-5 flex flex-wrap gap-2">
+                          {['Reserve now', 'View menu', 'Private dining'].map((item) => (
+                            <span
+                              key={item}
+                              className="rounded-full border border-white/12 bg-white/[0.05] px-3 py-1.5 text-xs text-white/72"
+                            >
+                              {item}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 border-t border-white/8 bg-[#0f1015] p-4 sm:grid-cols-3">
+                    {[
+                      'Signature menu',
+                      'Private dining',
+                      'Hours and location',
+                    ].map((item) => (
+                      <div key={item} className="rounded-2xl bg-white/[0.03] px-4 py-4 text-sm text-white/70">
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="rounded-[28px] bg-white/[0.03] p-4">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-white/42">Business info</p>
+                    <div className="mt-4 space-y-3">
+                      {['Cuisine: Italian seafood', 'Tone: Refined', 'Style: Luxury', 'Pages: Home, Menu, Contact'].map((item) => (
+                        <div key={item} className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-white/68">
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[28px] bg-white/[0.03] p-4">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-white/42">AI actions</p>
+                    <div className="mt-4 space-y-3">
+                      <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 text-sm text-white/72">
+                        “Make it warmer and more reservation-focused.”
+                      </div>
+                      <div className="rounded-2xl border border-emerald-400/15 bg-emerald-400/8 p-4 text-sm text-emerald-100">
+                        Updated hero, CTA placement, menu highlights, and mobile layout.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[28px] bg-white/[0.03] p-4">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-white/42">Publish state</p>
+                    <div className="mt-4 rounded-[24px] border border-orange-300/18 bg-gradient-to-r from-orange-500/10 to-amber-500/10 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">marea.synthr.site</p>
+                          <p className="mt-1 text-xs text-white/52">Ready to go live</p>
+                        </div>
+                        <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-950">
+                          Publish
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </BrowserFrame>
+          </div>
+        </div>
+      </section>
+
+      <section id="showcase" className="px-4 py-20 sm:px-6 sm:py-24">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-10 max-w-2xl">
+            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-orange-200">Showcase</p>
+            <h2 className="mt-4 text-4xl font-semibold tracking-[-0.04em] text-white sm:text-5xl">
+              Built for every kind of restaurant.
+            </h2>
+          </div>
+
+          <div className={`${surfaceClass} overflow-hidden`}>
+            <div className="grid gap-0 lg:grid-cols-[0.24fr_0.28fr_0.48fr]">
+              <div className="border-b border-white/8 p-3 lg:border-b-0 lg:border-r">
+                <p className="px-3 pb-3 text-[11px] uppercase tracking-[0.2em] text-white/42">Restaurant type</p>
+                <div className="grid gap-2">
+                  {showcaseItems.map((item, index) => {
+                    const isActive = index === activeIndex;
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        aria-selected={isActive}
+                        onClick={() => setActiveIndex(index)}
+                        className={`rounded-[22px] border px-4 py-4 text-left transition ${
+                          isActive
+                            ? 'border-orange-300/28 bg-white/[0.08] text-white shadow-[0_12px_30px_rgba(249,115,22,0.10)]'
+                            : 'border-white/8 bg-white/[0.02] text-white/52 hover:border-white/16 hover:bg-white/[0.04] hover:text-white/78'
+                        }`}
+                      >
+                        <p className="text-base font-semibold">{item.label}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="border-b border-white/8 p-6 lg:border-b-0 lg:border-r lg:p-8">
+                <div className="flex h-full flex-col">
+                  <div>
+                    <h3 className="mt-4 text-3xl font-semibold tracking-tight text-white">{active.title}</h3>
+                    <div className="mt-5 flex flex-wrap gap-2">
+                    {active.chips.map((chip) => (
+                      <span
+                        key={chip}
+                        className="rounded-full border border-white/12 bg-white/[0.04] px-3 py-1.5 text-xs text-white/70"
+                      >
+                        {chip}
+                      </span>
+                    ))}
+                    </div>
+                    <p className="mt-5 max-w-sm text-sm leading-7 text-white/60">{active.description}</p>
+                  </div>
+
+                  <div className="mt-8 grid gap-3">
+                    <div className="rounded-[24px] bg-white/[0.03] p-4">
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-white/42">Site focus</p>
+                      <p className="mt-3 text-sm leading-6 text-white/72">
+                        {active.label === 'Fine Dining' && 'Reservations, tasting menus, private dining.'}
+                        {active.label === 'Cafe' && 'Hours, pickup, neighborhood traffic.'}
+                        {active.label === 'Bakery' && 'Daily bakes, preorder flows, pickup.'}
+                        {active.label === 'Pizzeria' && 'Direct ordering, menu scanning, location.'}
+                        {active.label === 'Cocktail Bar' && 'Events, reservations, late-night traffic.'}
+                      </p>
+                    </div>
                     <div
-                      className="h-6 w-6 rounded-full border-2 border-amber-600 border-t-transparent animate-spin"
-                      style={{ animationDuration: '1.4s' }}
+                      className="h-36 rounded-[24px] bg-cover bg-center"
+                      style={{
+                        backgroundImage: `linear-gradient(180deg,rgba(9,9,13,0.18),rgba(9,9,13,0.62)), url("${active.mobileImage}")`,
+                      }}
                     />
                   </div>
                 </div>
-                <div className="h-3 w-24 rounded-full bg-stone-200/80 animate-pulse"></div>
-                <div className="h-2 w-full rounded-full bg-stone-100"></div>
-                <div className="h-2 w-5/6 rounded-full bg-stone-100"></div>
-                <div className="h-2 w-4/6 rounded-full bg-stone-100"></div>
-                <div className="mt-3 h-2 w-1/2 rounded-full bg-amber-200/80 animate-pulse"></div>
-                <div className="relative h-2 w-full rounded-full bg-stone-100 overflow-hidden">
-                  <div className="absolute inset-y-0 left-0 w-2/3 bg-amber-500/70 animate-pulse"></div>
-                </div>
               </div>
-            </div>
-          </div>
 
-          {/* Bottom-left "laptop tab" */}
-          <div className="absolute bottom-2 left-4 sm:bottom-6 sm:left-12 w-[40rem] sm:w-[56rem] opacity-40 animate-slide-in-left will-change-transform">
-            <div className="rounded-2xl border border-amber-200 bg-white/85 shadow-xl backdrop-blur-md overflow-hidden">
-              <div className="flex items-center gap-2 px-3 py-2 border-b border-amber-200 bg-white/90">
-                <span className="w-2 h-2 rounded-full bg-rose-400"></span>
-                <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                <span className="ml-2 text-[10px] font-semibold text-stone-500">Publish</span>
-              </div>
-              <div className="p-4 pt-12 relative min-h-[320px]">
-                <div className="h-2 w-full rounded-full bg-stone-100"></div>
-                <div className="mt-2 h-2 w-5/6 rounded-full bg-stone-100"></div>
-                <div className="mt-2 h-2 w-4/6 rounded-full bg-stone-100"></div>
-                <div className="mt-2 h-2 w-3/6 rounded-full bg-stone-100"></div>
-                <div className="mt-2 h-2 w-2/6 rounded-full bg-stone-100"></div>
-                <div className="mt-4 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-orange-600 to-amber-600 text-white text-[11px] font-semibold shadow-md">
-                  Publish Website
-                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
-                </div>
-                <div className="absolute right-6 bottom-3">
-                  <div className="relative">
-                    <div className="w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-t-12 border-stone-900 rotate-[-20deg] animate-bounce"></div>
-                    <span className="absolute -right-3 -bottom-3 w-5 h-5 rounded-full border-2 border-amber-400/70 animate-ping"></span>
+              <div className="p-4 lg:p-6">
+                <div className="relative">
+                  <div className={`absolute -right-4 -top-2 h-28 w-28 rounded-full ${active.glow} blur-3xl`} />
+                  <div className={`rounded-[30px] bg-gradient-to-br ${active.accent} p-[1px] transition-all duration-500`}>
+                    <div className="rounded-[29px] bg-[#0f1015] p-4 lg:p-5">
+                      <BrowserFrame title={active.brand}>
+                        <div className="relative h-[430px] overflow-hidden bg-[#121319]">
+                          <div
+                            className="absolute inset-0 bg-cover bg-center transition-all duration-500"
+                            style={{
+                              backgroundImage: `linear-gradient(180deg,rgba(9,9,13,0.10),rgba(9,9,13,0.72)), url("${active.image}")`,
+                            }}
+                          />
+
+                          <div className="relative flex items-center justify-between px-5 py-4 text-[11px] uppercase tracking-[0.18em] text-white/58">
+                            <span>{active.siteTitle}</span>
+                            <div className="flex gap-4">
+                              {active.nav.map((item) => (
+                                <span key={item}>{item}</span>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="relative flex h-full items-end p-5">
+                            <div className="grid w-full gap-4 lg:grid-cols-[1fr_170px]">
+                              <div className="rounded-[26px] bg-[#0b0c10]/70 p-5 backdrop-blur-xl">
+                                <h4 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+                                  {active.label === 'Fine Dining' && 'A richer homepage for premium reservations.'}
+                                  {active.label === 'Cafe' && 'A cleaner site for regulars and rush hours.'}
+                                  {active.label === 'Bakery' && 'Daily bakes and cake orders, framed beautifully.'}
+                                  {active.label === 'Pizzeria' && 'Menu-first pages built for direct orders.'}
+                                  {active.label === 'Cocktail Bar' && 'Nightlife atmosphere with booking built in.'}
+                                </h4>
+                                <div className="mt-5 flex flex-wrap gap-2">
+                                  {active.chips.slice(0, 3).map((chip) => (
+                                    <span
+                                      key={chip}
+                                      className="rounded-full bg-white/[0.08] px-3 py-1.5 text-xs text-white/72"
+                                    >
+                                      {chip}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div className="mx-auto w-full max-w-[180px] lg:max-w-none">
+                                <div className="rounded-[28px] border border-white/12 bg-[#0c0d11] p-2 shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
+                                  <div className="overflow-hidden rounded-[22px] border border-white/8 bg-[#111217]">
+                                    <div className="mx-auto mt-2 h-1.5 w-16 rounded-full bg-white/15" />
+                                  <div
+                                    className="mt-3 h-[250px] bg-cover bg-center"
+                                    style={{
+                                      backgroundImage: `linear-gradient(180deg,rgba(9,9,13,0.05),rgba(9,9,13,0.60)), url("${active.mobileImage}")`,
+                                    }}
+                                  />
+                                  <div className="border-t border-white/8 bg-white/[0.03] px-3 py-3 text-center text-xs text-white/58">
+                                    Mobile preview
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            </div>
+                          </div>
+                        </div>
+                      </BrowserFrame>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
+
+            <div className="flex items-center gap-2 border-t border-white/8 px-6 py-4">
+              {showcaseItems.map((item, index) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  aria-label={`Go to ${item.label}`}
+                  onClick={() => setActiveIndex(index)}
+                  className={`h-2.5 rounded-full transition-all ${
+                    index === activeIndex ? 'w-10 bg-orange-300' : 'w-2.5 bg-white/20 hover:bg-white/42'
+                  }`}
+                />
+              ))}
+            </div>
           </div>
         </div>
+      </section>
 
-        <div className="max-w-4xl mx-auto text-center relative z-10 w-full">
-          <div className="mb-8"></div>
-          
-          <h1 className="text-5xl sm:text-7xl font-bold tracking-tight text-stone-900 mb-8 leading-[1.1] font-serif">
-            Your restaurant, <br className="sm:hidden" />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-600">
-              online in <TypingText text="seconds." />
-            </span>
-          </h1>
-          
-          <p className="text-xl text-stone-700 mb-12 max-w-2xl mx-auto leading-relaxed font-light">
-            Create a stunning restaurant website with your menu, hours, and photos. No coding required. AI-powered design that sells.
+      <section className="px-4 py-20 sm:px-6 sm:py-24">
+        <div className="mx-auto max-w-7xl">
+          <div className="grid gap-6 lg:grid-cols-[1.08fr_0.92fr]">
+            <div className={`${surfaceClass} overflow-hidden p-6 lg:p-8`}>
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-[0.22em] text-orange-200">Product view</p>
+                  <h2 className="mt-3 text-4xl font-semibold tracking-[-0.04em] text-white">
+                    Add your details. Get a site back.
+                  </h2>
+                </div>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[0.48fr_0.52fr]">
+                <div className="space-y-5">
+                  {capabilityPanels.map((panel) => {
+                    const Icon = panel.icon;
+                    return (
+                      <div key={panel.title} className="py-1">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/[0.05] text-orange-200">
+                          <Icon size={20} />
+                        </div>
+                        <h3 className="mt-5 text-xl font-semibold text-white">{panel.title}</h3>
+                        <p className="mt-2 text-sm text-white/58">{panel.subtitle}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="rounded-[28px] border border-white/8 bg-[#111217] p-4">
+                  <div className="rounded-[24px] bg-white/[0.03] p-4">
+                    <div className="grid gap-3">
+                      {['Restaurant name', 'Cuisine and price range', 'Menu items and hours', 'Style and tone'].map((row, index) => (
+                        <div
+                          key={row}
+                          className={`rounded-2xl px-4 py-3 text-sm ${
+                            index === 2
+                              ? 'border border-orange-300/20 bg-orange-400/8 text-orange-100'
+                              : 'bg-white/[0.03] text-white/66'
+                            }`}
+                        >
+                          {row}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="my-4 flex items-center justify-center">
+                      <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs uppercase tracking-[0.18em] text-white/48">
+                        Generate with AI
+                      </div>
+                    </div>
+                    <div className="overflow-hidden rounded-[24px] border border-white/8">
+                      <div
+                        className="h-[270px] bg-cover bg-center"
+                        style={{
+                          backgroundImage:
+                            'linear-gradient(180deg,rgba(9,9,13,0.12),rgba(9,9,13,0.72)), url("https://images.unsplash.com/photo-1552566626-52f8b29e368c?auto=format&fit=crop&w=1600&q=80")',
+                        }}
+                      >
+                        <div className="flex h-full items-end p-4">
+                          <div className="rounded-[22px] border border-white/12 bg-[#0b0c10]/68 p-4 backdrop-blur-xl">
+                            <p className="mt-3 text-xl font-semibold text-white">
+                              A publish-ready homepage, menu, story, and contact flow.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-5">
+              {capabilityCards.map((card) => {
+                const Icon = card.icon;
+                return (
+                  <div key={card.title} className={`${surfaceClass} overflow-hidden p-5`}>
+                    <div className="grid gap-5 sm:grid-cols-[0.38fr_0.62fr] sm:items-center">
+                      <div className="rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-4">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] text-orange-200">
+                          <Icon size={18} />
+                        </div>
+                        <div className="mt-5 space-y-2">
+                          <div className="h-2 rounded-full bg-white/12" />
+                          <div className="h-2 w-4/5 rounded-full bg-white/10" />
+                          <div className="h-16 rounded-[18px] border border-white/8 bg-white/[0.03]" />
+                        </div>
+                      </div>
+                      <div>
+                        <h3 className="text-2xl font-semibold text-white">{card.title}</h3>
+                        <p className="mt-3 text-sm leading-7 text-white/60">{card.body}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="px-4 py-20 sm:px-6 sm:py-24">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-10 max-w-2xl">
+            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-orange-200">Go live</p>
+            <h2 className="mt-4 text-4xl font-semibold tracking-[-0.04em] text-white sm:text-5xl">
+              Generate it. Refine it. Publish it.
+            </h2>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-3">
+            {workflowCards.map((card, index) => (
+              <div key={card.title} className={`${surfaceClass} overflow-hidden p-5`}>
+                <div className="rounded-[24px] bg-[#111217] p-5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold uppercase tracking-[0.18em] text-orange-200/80">
+                      0{index + 1}
+                    </span>
+                    <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-white/48">
+                      Workflow
+                    </span>
+                  </div>
+                  <h3 className="mt-5 text-2xl font-semibold text-white">{card.title}</h3>
+                  <p className="mt-3 text-sm leading-7 text-white/60">{card.description}</p>
+                  <div className="mt-6 rounded-[22px] border border-orange-300/16 bg-gradient-to-r from-orange-500/8 to-amber-500/8 p-4 text-sm text-white/74">
+                    {card.meta}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-8 flex flex-wrap gap-3">
+            {['Launch faster', 'Own your website', 'Avoid commissions', 'Stop waiting on agencies'].map((item) => (
+              <div
+                key={item}
+                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-sm text-white/62"
+              >
+                <Check size={15} className="text-orange-200" />
+                {item}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="px-4 pt-4 pb-24 sm:px-6 sm:pb-28">
+        <div className="mx-auto max-w-5xl rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] px-8 py-12 text-center shadow-[0_30px_120px_rgba(0,0,0,0.32)] sm:px-12 sm:py-16">
+          <p className="text-sm font-semibold uppercase tracking-[0.22em] text-orange-200">Start now</p>
+          <h2 className="mt-4 text-4xl font-semibold tracking-[-0.04em] text-white sm:text-5xl">
+            Build your restaurant website today.
+          </h2>
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-white/60">
+            Enter your info, generate the site, and go live when it feels ready.
           </p>
-          
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button 
+          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+            <button
               onClick={() => navigate('/create')}
-              className="w-full sm:w-auto px-8 py-4 text-white rounded-xl font-semibold text-lg bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 transition-all hover:scale-[1.05] active:scale-95 shadow-xl shadow-orange-200 flex items-center justify-center gap-2 group"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-3.5 text-sm font-semibold text-white shadow-[0_18px_50px_rgba(249,115,22,0.28)] transition hover:from-orange-400 hover:to-amber-400"
             >
-              Create My Restaurant Website 
-              <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+              Generate my site
+              <ArrowRight size={16} />
             </button>
-            <button className="w-full sm:w-auto px-8 py-4 bg-white/90 backdrop-blur-sm text-stone-900 border border-stone-300 rounded-xl font-semibold text-lg hover:bg-white transition-all flex items-center justify-center shadow-lg">
-              See Examples
+            <button
+              onClick={() => navigate('/pricing')}
+              className="inline-flex items-center justify-center rounded-2xl border border-white/12 bg-white/[0.03] px-6 py-3.5 text-sm font-semibold text-white/78 transition hover:border-white/20 hover:bg-white/[0.05]"
+            >
+              Explore publishing
             </button>
           </div>
-
-          {/* Trust Badges */}
-          <div className="mt-16 flex flex-col sm:flex-row items-center justify-center gap-8 text-sm text-stone-600">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
-                <Clock size={16} className="text-orange-600" />
-              </div>
-              <span><span className="font-bold text-stone-900">5 minutes</span> to launch</span>
-            </div>
-            <div className="h-6 w-px bg-stone-300 hidden sm:block"></div>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
-                <UtensilsCrossed size={16} className="text-amber-600" />
-              </div>
-              <span>Perfect for <span className="font-bold text-stone-900">any cuisine</span></span>
-            </div>
-            <div className="h-6 w-px bg-stone-300 hidden sm:block"></div>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
-                <Sparkles size={16} className="text-orange-600" />
-              </div>
-              <span>Powered by <span className="font-bold text-stone-900">AI</span></span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Features Grid - Restaurant Focused */}
-      <section className="py-24 bg-gradient-to-b from-white to-amber-50 border-t border-orange-200">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-stone-900 mb-4">Why restaurants choose Synthr</h2>
-            <p className="text-lg text-stone-600">Built specifically for busy restaurant owners</p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            {/* Feature 1 */}
-            <div className="bg-white p-8 rounded-2xl shadow-lg border border-orange-100 hover:shadow-xl transition-shadow">
-              <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-amber-100 rounded-xl flex items-center justify-center mb-6 text-orange-600">
-                <UtensilsCrossed size={32} />
-              </div>
-              <h3 className="text-2xl font-bold text-stone-900 mb-3">Menu Management</h3>
-              <p className="text-stone-600 leading-relaxed">Add your entire menu with prices and descriptions. AI automatically organizes it beautifully by category.</p>
-            </div>
-
-            {/* Feature 2 */}
-            <div className="bg-white p-8 rounded-2xl shadow-lg border border-amber-100 hover:shadow-xl transition-shadow">
-              <div className="w-16 h-16 bg-gradient-to-br from-amber-100 to-orange-100 rounded-xl flex items-center justify-center mb-6 text-amber-600">
-                <Clock size={32} />
-              </div>
-              <h3 className="text-2xl font-bold text-stone-900 mb-3">Smart Hours & Services</h3>
-              <p className="text-stone-600 leading-relaxed">Display your hours, services (dine-in, takeout, delivery), and contact info prominently. Customers find you instantly.</p>
-            </div>
-
-            {/* Feature 3 */}
-            <div className="bg-white p-8 rounded-2xl shadow-lg border border-orange-100 hover:shadow-xl transition-shadow">
-              <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-amber-100 rounded-xl flex items-center justify-center mb-6 text-orange-600">
-                <Sparkles size={32} />
-              </div>
-              <h3 className="text-2xl font-bold text-stone-900 mb-3">AI-Powered Design</h3>
-              <p className="text-stone-600 leading-relaxed">Tell the AI to redesign your site. Change colors, layout, tone, and more with simple text commands.</p>
-            </div>
-          </div>
-
-          {/* Additional Benefits */}
-          <div className="mt-16 bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl p-12 text-white shadow-2xl">
-            <h3 className="text-2xl font-bold mb-8 text-center font-serif">No setup. No hosting. No headaches.</h3>
-            <div className="grid md:grid-cols-4 gap-6 text-center">
-              <div>
-                <div className="text-4xl font-bold mb-2">5 min</div>
-                <p className="text-orange-100">To launch your site</p>
-              </div>
-              <div>
-                <div className="text-4xl font-bold mb-2">0 $</div>
-                <p className="text-orange-100">Hidden fees or charges</p>
-              </div>
-              <div>
-                <div className="text-4xl font-bold mb-2">∞</div>
-                <p className="text-orange-100">Design changes with AI</p>
-              </div>
-              <div>
-                <div className="text-4xl font-bold mb-2">📱</div>
-                <p className="text-orange-100">Mobile optimized</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-20 bg-white">
-        <div className="max-w-3xl mx-auto px-4 text-center">
-          <h2 className="text-4xl font-bold text-stone-900 mb-6 font-serif">Ready to go online?</h2>
-          <p className="text-xl text-stone-600 mb-12">Start building your restaurant website right now. It takes less time than your lunch rush.</p>
-          <button 
-            onClick={() => navigate('/create')}
-            className="px-10 py-5 bg-gradient-to-r from-orange-600 to-amber-600 text-white rounded-xl font-bold text-lg hover:from-orange-700 hover:to-amber-700 transition-all hover:scale-[1.05] active:scale-95 shadow-xl shadow-orange-200 inline-flex items-center gap-2"
-          >
-            Create Your Website Now
-            <ArrowRight size={22} />
-          </button>
         </div>
       </section>
     </div>

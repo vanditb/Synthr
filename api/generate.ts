@@ -49,9 +49,11 @@ const defaultStockImages: ImageAsset[] = [
 
 const buildImageAssets = (
   images: { type: 'interior' | 'food' | 'logo'; data: string }[] | undefined,
-  useStockImages: boolean
+  useStockImages: boolean,
+  cuisineType?: string
 ): ImageAsset[] => {
   const assets: ImageAsset[] = [];
+  const shouldRestrictFood = Boolean(cuisineType);
 
   if (images && images.length > 0) {
     for (const img of images) {
@@ -70,6 +72,9 @@ const buildImageAssets = (
 
   if (useStockImages) {
     for (const stock of defaultStockImages) {
+      if (shouldRestrictFood && ['food', 'dish', 'dessert'].includes(stock.role)) {
+        continue;
+      }
       if (!assets.some((a) => a.role === stock.role)) {
         assets.push(stock);
       }
@@ -77,6 +82,16 @@ const buildImageAssets = (
   }
 
   return assets;
+};
+
+const formatMenuPrice = (price: unknown): string => {
+  if (typeof price === 'number' && Number.isFinite(price)) {
+    return `$${price.toFixed(2)}`;
+  }
+
+  const trimmed = String(price ?? '').trim();
+  if (!trimmed) return '';
+  return trimmed.startsWith('$') ? trimmed : `$${trimmed}`;
 };
 
 const ensureTailwindCdn = (html: string): string => {
@@ -161,6 +176,87 @@ const ensureDesignSafetyStyles = (html: string, style?: string): string => {
     return html.replace(/<head[^>]*>/i, (match) => `${match}\n  ${fontTags}${viewportTag}\n  ${safetyStyle}`);
   }
   return html.replace(/<html[^>]*>/i, (match) => `${match}\n<head>\n  ${fontTags}${viewportTag}\n  ${safetyStyle}\n</head>`);
+};
+
+const ensureSmoothScrollScript = (html: string): string => {
+  if (/data-synthr-scroll/i.test(html)) return html;
+  const script = `
+  <script data-synthr-scroll>
+    document.querySelectorAll('a[href]').forEach((link) => {
+      const href = link.getAttribute('href') || '';
+      if (!href.startsWith('#')) return;
+      link.addEventListener('click', (e) => {
+        const target = document.querySelector(href);
+        if (!target) {
+          const fallback = document.querySelector('#home') || document.body;
+          e.preventDefault();
+          fallback.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return;
+        }
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+  </script>`;
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, `${script}\n</body>`);
+  }
+  return `${html}\n${script}`;
+};
+
+const normalizeOnPageLinks = (html: string): string => {
+  const aliasMap: Array<{ pattern: RegExp; target: string }> = [
+    { pattern: /(home|top|start)/i, target: '#home' },
+    { pattern: /(about|story)/i, target: '#about' },
+    { pattern: /(menu|food|dishes)/i, target: '#menu' },
+    { pattern: /(featured)/i, target: '#featured' },
+    { pattern: /(experience|gallery|atmosphere)/i, target: '#experience' },
+    { pattern: /(hours|schedule)/i, target: '#hours' },
+    { pattern: /(order|ordering|pickup|delivery)/i, target: '#order' },
+    { pattern: /(reserve|reservation|book|booking)/i, target: '#reserve' },
+    { pattern: /(contact|location|visit|find)/i, target: '#contact' },
+  ];
+
+  const normalizeHash = (value: string) => {
+    const clean = value.trim().replace(/^#/, '');
+    if (!clean) return '#home';
+    const alias = aliasMap.find((entry) => entry.pattern.test(clean));
+    return alias?.target || `#${clean}`;
+  };
+
+  return html.replace(/<a\b([^>]*?)href=(["'])([^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi, (match, before, quote, href, after, inner) => {
+    const rawHref = String(href || '').trim();
+    if (!rawHref) return match;
+    if (/^(https?:|mailto:|tel:|javascript:)/i.test(rawHref)) return match;
+
+    const textContent = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const candidate = rawHref.startsWith('#') ? rawHref : `${rawHref} ${textContent}`;
+    const target = normalizeHash(candidate);
+    return `<a${before}href=${quote}${target}${quote}${after}>${inner}</a>`;
+  });
+};
+
+const enforceMenuSection = (html: string, menuHTML: string): string => {
+  if (!menuHTML || !menuHTML.trim()) return html;
+  const section = `
+  <section id="menu" class="py-16 bg-white">
+    <div class="max-w-6xl mx-auto px-6">
+      <h2 class="text-3xl font-bold text-slate-900 mb-8">Menu</h2>
+      <div class="space-y-10">
+        ${menuHTML}
+      </div>
+    </div>
+  </section>
+  `;
+
+  const menuSectionMatch = html.match(/<section[^>]*id=["']menu["'][^>]*>[\s\S]*?<\/section>/i);
+  if (menuSectionMatch) {
+    return html.replace(menuSectionMatch[0], section);
+  }
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, `${section}\n</body>`);
+  }
+  return `${html}\n${section}`;
 };
 
 const applyHeroBackground = (html: string, imageUrl?: string, instruction?: string): string => {
@@ -444,6 +540,13 @@ export default async function handler(req: any, res: any) {
       hours,
       pages,
       description,
+      brand,
+      primaryCta,
+      signatureDishes,
+      services,
+      ordering,
+      domainPreference,
+      advanced,
       dineIn,
       takeout,
       delivery,
@@ -493,7 +596,7 @@ export default async function handler(req: any, res: any) {
                 <h4 class="text-lg font-semibold text-slate-900">${item.name}</h4>
                 <p class="text-slate-600 text-sm mt-1">${item.description}</p>
               </div>
-              <span class="text-lg font-semibold text-slate-900 ml-4">$${item.price.toFixed(2)}</span>
+              <span class="text-lg font-semibold text-slate-900 ml-4">${formatMenuPrice(item.displayPrice ?? item.price)}</span>
             </div>
           `
             )
@@ -592,12 +695,17 @@ export default async function handler(req: any, res: any) {
     `
         : '';
 
-    const imageAssets = buildImageAssets(images, useStockImages);
+    const imageAssets = buildImageAssets(images, useStockImages, cuisineType);
     const imageInstructions =
       imageAssets.length > 0
         ? `
 🖼️ IMAGE ASSETS (use these exact URLs, do not invent new ones):
 ${imageAssets.map((img) => `- ${img.role.toUpperCase()}: ${img.url} (alt: ${img.alt})`).join('\n')}
+
+IMAGE RULES:
+- Images must match the cuisine and theme. Do not use unrelated food photos.
+- Use ONLY the provided image assets. Do not invent or fetch new URLs.
+- Keep image usage consistent across hero, menu, and gallery.
 `
         : '';
 
@@ -638,17 +746,28 @@ ${fullStory && founderName ? `
 Founded by ${founderName}${yearFounded ? ` in ${yearFounded}` : ''}.
 ${fullStory}` : ''}
 
+BRAND DIRECTION:
+Atmosphere: ${brand?.atmosphere || 'Not specified'}
+Audience: ${brand?.audience || 'Not specified'}
+Keywords: ${Array.isArray(brand?.keywords) && brand.keywords.length ? brand.keywords.join(', ') : 'Not specified'}
+Hero focus: ${brand?.heroFocus || 'Not specified'}
+Primary CTA: ${primaryCta || 'Not specified'}
+Publishing intent: ${domainPreference || 'Not specified'}
+
 🍽️ MENU:
-${menu?.map((item: any) => `- ${item.name}: ${item.description} ($${item.price.toFixed(2)})`).join('\n')}
+${menu?.map((item: any) => `- ${item.name}: ${item.description} (${formatMenuPrice(item.displayPrice ?? item.price)})`).join('\n')}
+${Array.isArray(signatureDishes) && signatureDishes.length ? `Signature dishes: ${signatureDishes.join(', ')}` : ''}
 
 ⏰ HOURS:
 ${Object.entries(hours || {}).map(([day, time]) => `${day}: ${time}`).join('\n')}
 
 🛒 SERVICES:
 ${[dineIn && '✓ Dine-in', takeout && '✓ Takeout', delivery && '✓ Delivery'].filter(Boolean).join(', ')}
+${[services?.catering && '✓ Catering', services?.privateDining && '✓ Private dining'].filter(Boolean).join(', ')}
 
 📱 ONLINE ORDERING:
 ${onlineOrdering?.acceptOrders ? `Available on: ${onlineOrdering.platforms.join(', ')} - URL: ${onlineOrdering.customURL}` : 'Not available'}
+${ordering?.enabled ? `Ordering provider: ${ordering.provider} - URL: ${ordering.url || 'Not provided'}` : ''}
 
 📅 RESERVATIONS:
 ${reservations?.acceptReservations ? `Available on: ${reservations.platforms.join(', ')} - URL: ${reservations.url}` : 'Not available'}
@@ -671,7 +790,7 @@ ${imageInstructions}
 REQUIREMENTS:
 - Create a complete, valid HTML document (no markdown)
 - Use Tailwind CSS via CDN
-- Use the provided IMAGE ASSETS URLs. Ensure at least 4 images are visible on the page.
+- Use the provided IMAGE ASSETS URLs. Ensure images are cuisine-appropriate and consistent.
 - Mobile-responsive design
 - Include: Hero, Navigation, About Us, Full Menu (organized by category), Hours, Location/Map, Reservation/Order CTAs, Social Links, Footer
 - Typography must be consistent and professional (limit to 2 complementary fonts).
@@ -685,6 +804,7 @@ REQUIREMENTS:
 - Fast-loading, optimal performance
 - Professional footer with all contact information
 - No empty sections or placeholder text. If a detail is missing, write tasteful, generic copy without inventing facts like address, phone, or prices.
+- Menu MUST use only the provided items exactly as listed. Do not add, remove, or change any menu item.
 
 Return ONLY raw HTML - no markdown code blocks, no explanations.`;
 
@@ -708,8 +828,11 @@ Return ONLY raw HTML - no markdown code blocks, no explanations.`;
 
     cleanHtml = ensureTailwindCdn(cleanHtml);
     cleanHtml = ensureDesignSafetyStyles(cleanHtml, style);
+    cleanHtml = normalizeOnPageLinks(cleanHtml);
+    cleanHtml = ensureSmoothScrollScript(cleanHtml);
     cleanHtml = injectFallbackGallery(cleanHtml, imageAssets);
     cleanHtml = applyHeroBackground(cleanHtml, assistantImage, customInstruction);
+    cleanHtml = enforceMenuSection(cleanHtml, menuHTML);
 
     const looksInvalid =
       cleanHtml.length < 1200 ||

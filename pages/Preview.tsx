@@ -5,21 +5,12 @@ import { generateWebsiteHtml } from '../services/generatorService';
 import { requestAssistantResponse } from '../services/assistantService';
 import { ArrowLeft, Send, Sparkles, RefreshCw, Smartphone, Monitor, Loader2, Upload, X } from 'lucide-react';
 
-const loadingMessages = [
-  'Analyzing menu...',
-  'Designing homepage...',
-  'Writing restaurant copy...',
-  'Optimizing layout...',
-  'Adding finishing touches...'
-];
-
 export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details }) => {
   const navigate = useNavigate();
   const [html, setHtml] = useState<string>('');
   const [request, setRequest] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
-  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<
     { id: string; role: 'user' | 'assistant'; content: string; imageUrl?: string }[]
@@ -44,13 +35,7 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
   const performGeneration = async (instruction?: string, assistantImage?: string | null) => {
     if (!details) return;
     setIsUpdating(true);
-    setLoadingMessageIndex(0);
     setError(null);
-
-    // Cycle through loading messages
-    const messageInterval = setInterval(() => {
-      setLoadingMessageIndex(prev => (prev + 1) % loadingMessages.length);
-    }, 1200);
 
     try {
       console.log('Starting generation...');
@@ -64,7 +49,6 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
       setError(errorMsg);
       setHtml('');
     } finally {
-      clearInterval(messageInterval);
       setIsUpdating(false);
     }
   };
@@ -196,30 +180,34 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
     setPublishSubmitted(true);
   };
 
-  if (!details) return null;
+  if (!details) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-slate-50 text-slate-600">
+        Preparing your preview...
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen flex-col md:flex-row overflow-hidden bg-slate-50">
-      
       {/* LEFT PANEL: Preview */}
       <div className="w-full md:flex-1 bg-slate-100 flex flex-col relative md:order-2">
-        
         {/* Device Toggle Toolbar */}
         <div className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 shadow-sm z-10">
-          <button 
-            onClick={() => navigate('/create')} 
+          <button
+            onClick={() => navigate('/create')}
             className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 md:hidden"
           >
             <ArrowLeft size={20} />
           </button>
           <div className="flex items-center gap-4 md:mx-auto">
-            <button 
+            <button
               onClick={() => setViewMode('desktop')}
               className={`p-2 rounded-lg flex items-center gap-2 text-sm font-medium transition ${viewMode === 'desktop' ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
             >
               <Monitor size={18} /> Desktop
             </button>
-            <button 
+            <button
               onClick={() => setViewMode('mobile')}
               className={`p-2 rounded-lg flex items-center gap-2 text-sm font-medium transition ${viewMode === 'mobile' ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
             >
@@ -230,21 +218,35 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
 
         {/* Iframe Container */}
         <div className="flex-1 overflow-hidden flex items-center justify-center p-4 sm:p-8">
-          <div 
+          <div
             className={`bg-white shadow-2xl transition-all duration-500 overflow-hidden relative ${
-              viewMode === 'mobile' 
-                ? 'w-[375px] h-[667px] rounded-[30px] border-[8px] border-slate-800' 
+              viewMode === 'mobile'
+                ? 'w-[375px] h-[667px] rounded-[30px] border-[8px] border-slate-800'
                 : 'w-full h-full rounded-xl border border-slate-200'
             }`}
           >
             {/* Notch for mobile view */}
-            {viewMode === 'mobile' && <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-slate-800 rounded-b-xl z-20"></div>}
-            
+            {viewMode === 'mobile' && (
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-slate-800 rounded-b-xl z-20"></div>
+            )}
+
             {isUpdating && (
               <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-30 flex flex-col items-center justify-center text-slate-600">
                 <Loader2 className="animate-spin mb-4 text-indigo-600" size={48} />
-                <p className="font-bold text-xl animate-pulse">{loadingMessages[loadingMessageIndex]}</p>
-                <p className="text-sm opacity-70 mt-2">This usually takes 15-30 seconds</p>
+                <p className="font-bold text-xl">
+                  Updating preview
+                  <span className="inline-flex ml-2">
+                    <span className="animate-pulse" style={{ animationDelay: '0ms' }}>
+                      .
+                    </span>
+                    <span className="animate-pulse" style={{ animationDelay: '150ms' }}>
+                      .
+                    </span>
+                    <span className="animate-pulse" style={{ animationDelay: '300ms' }}>
+                      .
+                    </span>
+                  </span>
+                </p>
               </div>
             )}
 
@@ -276,7 +278,6 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
 
       {/* RIGHT PANEL: AI Editor */}
       <div className="w-full md:w-[420px] flex flex-col border-l border-slate-200 bg-white z-10 shadow-xl md:order-1">
-        
         {/* Header */}
         <div className="p-4 border-b border-slate-100 flex items-center gap-3">
           <button onClick={() => navigate('/create')} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 hidden md:block">
@@ -294,10 +295,7 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
 
           <div className="space-y-4">
             {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
+              <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
                   className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm whitespace-pre-wrap ${
                     message.role === 'user'
@@ -448,9 +446,7 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
             <div className="px-6 py-5 space-y-4">
               {!publishSubmitted ? (
                 <>
-                  <p className="text-sm text-slate-600">
-                    To publish your website, please contact our team.
-                  </p>
+                  <p className="text-sm text-slate-600">To publish your website, please contact our team.</p>
                   <form className="space-y-4" onSubmit={handlePublishSubmit}>
                     <div className="space-y-2">
                       <label className="text-xs font-semibold text-slate-600">Name *</label>

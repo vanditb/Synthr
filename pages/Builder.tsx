@@ -1,110 +1,446 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BusinessDetails, BusinessType, WebsiteStyle, RestaurantTone, MenuItem } from '../types';
-import { Upload, Check, Loader2, Plus, Trash2, ChevronDown, Link2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Loader2, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
+import {
+  BusinessDetails,
+  BusinessType,
+  DietaryTag,
+  DomainPreference,
+  HeroFocus,
+  ImageType,
+  MenuItem,
+  OrderingProvider,
+  PrimaryCta,
+  ReservationProvider,
+  RestaurantTone,
+  WebsiteStyle,
+} from '../types';
+
+const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+const styleOptions: WebsiteStyle[] = [WebsiteStyle.Modern, WebsiteStyle.Luxury, WebsiteStyle.Clean, WebsiteStyle.Casual];
+const toneOptions: RestaurantTone[] = [
+  RestaurantTone.FamilyFriendly,
+  RestaurantTone.Casual,
+  RestaurantTone.Trendy,
+  RestaurantTone.Upscale,
+  RestaurantTone.Traditional,
+];
+const heroFocusOptions: HeroFocus[] = ['Food', 'Interior', 'Chef', 'Story', 'Events'];
+const dietaryOptions: DietaryTag[] = ['vegetarian', 'vegan', 'gluten-free', 'halal', 'spicy'];
+
+const orderingProviders: { value: OrderingProvider; label: string }[] = [
+  { value: 'none', label: 'No platform yet' },
+  { value: 'doordash', label: 'DoorDash' },
+  { value: 'ubereats', label: 'Uber Eats' },
+  { value: 'toast', label: 'Toast' },
+  { value: 'square', label: 'Square' },
+  { value: 'phone', label: 'Phone only' },
+  { value: 'custom', label: 'Custom link' },
+];
+
+const reservationProviders: { value: ReservationProvider; label: string }[] = [
+  { value: 'none', label: 'No platform yet' },
+  { value: 'opentable', label: 'OpenTable' },
+  { value: 'resy', label: 'Resy' },
+  { value: 'yelp', label: 'Yelp' },
+  { value: 'phone', label: 'Phone only' },
+  { value: 'custom', label: 'Custom link' },
+];
+
+const stepConfig = [
+  { id: 'about', title: 'Tell us about your restaurant', helper: 'Start with the basics.', optional: false },
+  { id: 'services', title: 'What services do you offer?', helper: 'Pick what customers can actually do.', optional: true },
+  { id: 'style', title: 'Choose the look and tone', helper: 'Keep this quick and intuitive.', optional: true },
+  { id: 'menu', title: 'Add a few menu highlights', helper: 'Only include items you want on the site.', optional: false },
+  { id: 'operations', title: 'How should customers book or order?', helper: 'Set the actions that matter most.', optional: true },
+  { id: 'location', title: 'How should customers contact you?', helper: 'Add the details people need before they visit.', optional: false },
+  { id: 'assets', title: 'Add photos and assets', helper: 'Upload visuals or use stock images.', optional: true },
+  { id: 'review', title: 'Review and generate', helper: 'One last check before we build the site.', optional: false },
+] as const;
+
+const createEmptyHours = () =>
+  daysOfWeek.reduce<Record<string, string>>((acc, day) => {
+    acc[day] = '';
+    return acc;
+  }, {});
+
+const createEmptyMenuItem = (): MenuItem => ({
+  name: '',
+  description: '',
+  price: '',
+  category: '',
+  dietary: [],
+});
+
+const createInitialDetails = (): BusinessDetails => ({
+  type: BusinessType.Restaurant,
+  name: '',
+  cuisineType: '',
+  priceRange: '$$',
+  style: WebsiteStyle.Modern,
+  tone: RestaurantTone.FamilyFriendly,
+  brand: {
+    summary: '',
+    story: '',
+    heroPhrase: '',
+    atmosphere: '',
+    audience: '',
+    keywords: [],
+    heroFocus: 'Food',
+  },
+  services: {
+    dineIn: true,
+    takeout: false,
+    delivery: false,
+    catering: false,
+    privateDining: false,
+  },
+  primaryCta: 'reservations',
+  menu: [createEmptyMenuItem(), createEmptyMenuItem(), createEmptyMenuItem()],
+  signatureDishes: [],
+  ordering: {
+    enabled: false,
+    provider: 'none',
+    url: '',
+  },
+  reservations: {
+    enabled: true,
+    provider: 'opentable',
+    url: '',
+  },
+  location: {
+    city: '',
+    address: '',
+    phone: '',
+    email: '',
+    googleMapsLink: '',
+    hours: createEmptyHours(),
+  },
+  socialLinks: {
+    instagram: '',
+    tiktok: '',
+    googleReviews: '',
+    yelp: '',
+    facebook: '',
+  },
+  images: [],
+  useStockImages: true,
+  domainPreference: 'undecided',
+  advanced: {
+    founderName: '',
+    yearFounded: undefined,
+    neighborhood: '',
+    parking: '',
+    weeklySpecials: '',
+    awards: [],
+    dietaryAccommodations: [],
+    cateringEmail: '',
+    privateEventCapacity: undefined,
+  },
+});
+
+const normalizeUrl = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+};
+
+const normalizeHandle = (value: string, platform: 'instagram' | 'tiktok') => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const withoutUrl = trimmed
+    .replace(new RegExp(`^https?:\\/\\/(www\\.)?${platform}\\.com\\/?`, 'i'), '')
+    .replace(/^@/, '')
+    .replace(/\/$/, '');
+  return withoutUrl.split('/')[0];
+};
+
+const parseCommaList = (value: string) =>
+  value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const imageLabelByType: Record<ImageType, string> = {
+  food: 'Food photos',
+  interior: 'Interior photos',
+  logo: 'Logo',
+};
+
+const buildExampleRestaurant = (variant: 'italian' | 'cafe' | 'indian'): BusinessDetails => {
+  const base = createInitialDetails();
+
+  if (variant === 'italian') {
+    return {
+      ...base,
+      name: 'Luna Rosa',
+      cuisineType: 'Italian',
+      priceRange: '$$',
+      style: WebsiteStyle.Modern,
+      tone: RestaurantTone.Upscale,
+      brand: {
+        ...base.brand,
+        summary: 'Warm neighborhood Italian spot serving handmade pasta, wood-fired pizza, and easy weeknight dinners.',
+        heroPhrase: 'Italian dinner, done right',
+        atmosphere: 'Warm, lively, and date-night friendly',
+        audience: 'Couples, local families, and weeknight regulars',
+        keywords: ['handmade pasta', 'wood-fired', 'local favorite'],
+        heroFocus: 'Food',
+      },
+      services: {
+        dineIn: true,
+        takeout: true,
+        delivery: false,
+        catering: true,
+        privateDining: false,
+      },
+      primaryCta: 'reservations',
+      menu: [
+        { name: 'Rigatoni Vodka', description: 'Tomato cream sauce with basil and parmesan', price: '$21', category: 'Pasta', dietary: ['vegetarian'] },
+        { name: 'Margherita Pizza', description: 'Fresh mozzarella, basil, olive oil', price: '$18', category: 'Pizza', dietary: ['vegetarian'] },
+        { name: 'Chicken Milanese', description: 'Crispy cutlet with arugula and lemon', price: '$24', category: 'Entrees', dietary: [] },
+      ],
+      signatureDishes: ['Rigatoni Vodka', 'Margherita Pizza'],
+      reservations: { enabled: true, provider: 'opentable', url: 'https://opentable.com' },
+      ordering: { enabled: true, provider: 'toast', url: 'https://order.toasttab.com' },
+      location: {
+        city: 'Chicago',
+        address: '214 West Fulton Street',
+        phone: '(312) 555-1842',
+        email: 'hello@lunarosa.com',
+        googleMapsLink: 'https://maps.google.com',
+        hours: {
+          Monday: '4:00 PM - 9:00 PM',
+          Tuesday: '4:00 PM - 9:00 PM',
+          Wednesday: '4:00 PM - 9:30 PM',
+          Thursday: '4:00 PM - 9:30 PM',
+          Friday: '4:00 PM - 10:30 PM',
+          Saturday: '12:00 PM - 10:30 PM',
+          Sunday: '12:00 PM - 8:30 PM',
+        },
+      },
+      socialLinks: {
+        instagram: 'lunarosachi',
+        googleReviews: 'https://maps.google.com',
+      },
+    };
+  }
+
+  if (variant === 'cafe') {
+    return {
+      ...base,
+      name: 'Northline Cafe',
+      cuisineType: 'Cafe',
+      priceRange: '$',
+      style: WebsiteStyle.Clean,
+      tone: RestaurantTone.Casual,
+      brand: {
+        ...base.brand,
+        summary: 'All-day cafe with specialty coffee, breakfast plates, and a bright space for regulars and remote workers.',
+        heroPhrase: 'Coffee, breakfast, and slow mornings',
+        atmosphere: 'Bright, calm, and easygoing',
+        audience: 'Morning regulars, students, and remote workers',
+        keywords: ['specialty coffee', 'breakfast', 'all-day cafe'],
+        heroFocus: 'Interior',
+      },
+      services: {
+        dineIn: true,
+        takeout: true,
+        delivery: false,
+        catering: false,
+        privateDining: false,
+      },
+      primaryCta: 'visits',
+      menu: [
+        { name: 'Honey Oat Latte', description: 'Espresso, oat milk, and wildflower honey', price: '$6', category: 'Coffee', dietary: ['vegetarian'] },
+        { name: 'Avocado Toast', description: 'Sourdough, chili flakes, lemon, herbs', price: '$12', category: 'Breakfast', dietary: ['vegetarian'] },
+        { name: 'Breakfast Burrito', description: 'Eggs, potatoes, cheddar, salsa verde', price: '$13', category: 'Breakfast', dietary: [] },
+      ],
+      signatureDishes: ['Honey Oat Latte', 'Avocado Toast'],
+      reservations: { enabled: false, provider: 'none', url: '' },
+      ordering: { enabled: true, provider: 'square', url: 'https://squareup.com' },
+      location: {
+        city: 'Austin',
+        address: '88 South Lamar Blvd',
+        phone: '(512) 555-9081',
+        email: 'hi@northlinecafe.com',
+        googleMapsLink: 'https://maps.google.com',
+        hours: {
+          Monday: '7:00 AM - 4:00 PM',
+          Tuesday: '7:00 AM - 4:00 PM',
+          Wednesday: '7:00 AM - 4:00 PM',
+          Thursday: '7:00 AM - 4:00 PM',
+          Friday: '7:00 AM - 5:00 PM',
+          Saturday: '8:00 AM - 5:00 PM',
+          Sunday: '8:00 AM - 3:00 PM',
+        },
+      },
+      socialLinks: {
+        instagram: 'northlinecafe',
+      },
+    };
+  }
+
+  return {
+    ...base,
+    name: 'Saffron Table',
+    cuisineType: 'Indian',
+    priceRange: '$$',
+    style: WebsiteStyle.Luxury,
+    tone: RestaurantTone.Traditional,
+    brand: {
+      ...base.brand,
+      summary: 'Modern Indian restaurant serving regional curries, tandoor dishes, and weekend family dinners.',
+      heroPhrase: 'Indian cooking with depth and warmth',
+      atmosphere: 'Warm, polished, and celebratory',
+      audience: 'Families, date nights, and special dinners',
+      keywords: ['tandoor', 'regional dishes', 'family dinners'],
+      heroFocus: 'Food',
+    },
+    services: {
+      dineIn: true,
+      takeout: true,
+      delivery: true,
+      catering: true,
+      privateDining: true,
+    },
+    primaryCta: 'online-orders',
+    menu: [
+      { name: 'Butter Chicken', description: 'Tandoor chicken in a rich tomato butter sauce', price: '$20', category: 'Mains', dietary: [] },
+      { name: 'Paneer Tikka', description: 'Charred paneer with peppers and chutney', price: '$15', category: 'Starters', dietary: ['vegetarian'] },
+      { name: 'Garlic Naan', description: 'Tandoor bread with garlic and cilantro', price: '$5', category: 'Bread', dietary: ['vegetarian'] },
+    ],
+    signatureDishes: ['Butter Chicken', 'Paneer Tikka'],
+    reservations: { enabled: true, provider: 'resy', url: 'https://resy.com' },
+    ordering: { enabled: true, provider: 'ubereats', url: 'https://ubereats.com' },
+    location: {
+      city: 'New York',
+      address: '41 East 12th Street',
+      phone: '(646) 555-7610',
+      email: 'hello@saffrontable.com',
+      googleMapsLink: 'https://maps.google.com',
+      hours: {
+        Monday: '12:00 PM - 9:30 PM',
+        Tuesday: '12:00 PM - 9:30 PM',
+        Wednesday: '12:00 PM - 9:30 PM',
+        Thursday: '12:00 PM - 10:00 PM',
+        Friday: '12:00 PM - 10:30 PM',
+        Saturday: '12:00 PM - 10:30 PM',
+        Sunday: '12:00 PM - 9:00 PM',
+      },
+    },
+    socialLinks: {
+      instagram: 'saffrontable',
+      googleReviews: 'https://maps.google.com',
+    },
+    advanced: {
+      ...base.advanced,
+      privateEventCapacity: 48,
+      cateringEmail: 'events@saffrontable.com',
+    },
+  };
+};
 
 export const Builder: React.FC<{ setDetails: (d: BusinessDetails) => void }> = ({ setDetails }) => {
   const navigate = useNavigate();
+  const [formData, setFormData] = useState<BusinessDetails>(createInitialDetails);
+  const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [expandedSection, setExpandedSection] = useState<string>('basic');
+  const [stepError, setStepError] = useState('');
+  const [menuBulkPaste, setMenuBulkPaste] = useState('');
+  const [showBulkPaste, setShowBulkPaste] = useState(false);
+  const [showMoreDetails, setShowMoreDetails] = useState(false);
+  const [showMoreContact, setShowMoreContact] = useState(false);
+  const [skippedSteps, setSkippedSteps] = useState<number[]>([]);
 
-  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const current = stepConfig[currentStep];
 
-  const [formData, setFormData] = useState<BusinessDetails>({
-    name: 'La Bella Pizza',
-    type: BusinessType.Restaurant,
-    style: WebsiteStyle.Modern,
-    tone: RestaurantTone.FamilyFriendly,
-    cuisineType: 'Italian',
-    priceRange: '$$',
-    city: 'San Francisco',
-    address: '123 Main St',
-    phone: '(555) 123-4567',
-    email: 'hello@labellapizza.com',
-    hours: {
-      Monday: '11:00 AM - 10:00 PM',
-      Tuesday: '11:00 AM - 10:00 PM',
-      Wednesday: '11:00 AM - 10:00 PM',
-      Thursday: '11:00 AM - 10:00 PM',
-      Friday: '11:00 AM - 11:00 PM',
-      Saturday: '12:00 PM - 11:00 PM',
-      Sunday: '12:00 PM - 9:00 PM'
-    },
-    dineIn: true,
-    takeout: true,
-    delivery: true,
-    tagline: 'Authentic Neapolitan Pizza',
-    shortDescription: 'Handcrafted pizzas made with imported ingredients and traditional techniques.',
-    fullStory: 'Founded in 2015, La Bella Pizza brings authentic Italian pizza-making traditions to San Francisco.',
-    yearFounded: 2015,
-    founderName: 'Marco Rossi',
-    menu: [
-      { name: 'Margherita Pizza', description: 'Classic tomato, mozzarella, basil', price: 14, category: 'Pizzas', dietary: ['vegetarian'] },
-      { name: 'Carbonara', description: 'Guanciale, egg, pecorino', price: 16, category: 'Pizzas' }
-    ],
-    onlineOrdering: {
-      acceptOrders: true,
-      platforms: ['doordash', 'ubereats'],
-      customURL: 'https://www.labellapizza.com/order'
-    },
-    reservations: {
-      acceptReservations: true,
-      platforms: ['opentable'],
-      url: 'https://www.opentable.com'
-    },
-    googleMapsLink: 'https://maps.google.com',
-    parking: 'Street parking available',
-    neighborhood: 'Hayes Valley',
-    socialLinks: {
-      instagram: '@labellapizza',
-      yelp: 'labellapizza',
-      googleReviews: 'maps.google.com'
-    },
-    hostEvents: true,
-    eventTypes: ['happyHour'],
-    weeklySpecials: 'Tuesday: $5 wine night. Friday: Live jazz music 7-10pm',
-    cateringAvailable: true,
-    cateringEmail: 'catering@labellapizza.com',
-    privateEventCapacity: 60,
-    pages: ['Home', 'Menu', 'Location', 'Contact'],
-    description: 'Authentic Italian restaurant',
-    images: [],
-    useStockImages: true
-  });
+  const validMenuItems = useMemo(
+    () =>
+      formData.menu.filter(
+        (item) => item.name.trim() && item.description.trim() && item.price.trim() && item.category.trim()
+      ),
+    [formData.menu]
+  );
+
+  const reviewWarnings = useMemo(() => {
+    const warnings: string[] = [];
+
+    if (!formData.brand.summary.trim()) warnings.push('Add a short brand summary.');
+    if (validMenuItems.length < 3) warnings.push('Add at least 3 menu items for a stronger first draft.');
+    if (!formData.location.phone.trim()) warnings.push('Add a phone number.');
+    if (!formData.location.address.trim() || !formData.location.city.trim()) warnings.push('Add your address and city.');
+    if (formData.primaryCta === 'reservations' && !formData.reservations.enabled) {
+      warnings.push('Reservations is your main CTA, but reservations are not enabled.');
+    }
+    if (formData.primaryCta === 'online-orders' && !formData.ordering.enabled) {
+      warnings.push('Online orders is your main CTA, but ordering is not enabled.');
+    }
+
+    return warnings;
+  }, [formData, validMenuItems.length]);
+
+  const updateBrand = <K extends keyof BusinessDetails['brand']>(key: K, value: BusinessDetails['brand'][K]) => {
+    setFormData((prev) => ({ ...prev, brand: { ...prev.brand, [key]: value } }));
+  };
+
+  const updateLocation = <K extends keyof BusinessDetails['location']>(
+    key: K,
+    value: BusinessDetails['location'][K]
+  ) => {
+    setFormData((prev) => ({ ...prev, location: { ...prev.location, [key]: value } }));
+  };
+
+  const updateService = (key: keyof BusinessDetails['services'], value: boolean) => {
+    setFormData((prev) => ({
+      ...prev,
+      services: {
+        ...prev.services,
+        [key]: value,
+      },
+    }));
+  };
+
+  const updateAdvanced = (key: keyof NonNullable<BusinessDetails['advanced']>, value: any) => {
+    setFormData((prev) => ({
+      ...prev,
+      advanced: {
+        ...prev.advanced,
+        [key]: value,
+      },
+    }));
+  };
+
+  const handleMenuItemChange = (index: number, field: keyof MenuItem, value: string | DietaryTag[]) => {
+    setFormData((prev) => ({
+      ...prev,
+      menu: prev.menu.map((item, itemIndex) => (itemIndex === index ? { ...item, [field]: value } : item)),
+    }));
+  };
 
   const handleAddMenuItem = () => {
-    setFormData(prev => ({
-      ...prev,
-      menu: [...prev.menu, { name: '', description: '', price: 0, category: '', dietary: [] }]
-    }));
+    setFormData((prev) => ({ ...prev, menu: [...prev.menu, createEmptyMenuItem()] }));
   };
 
   const handleRemoveMenuItem = (index: number) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      menu: prev.menu.filter((_, i) => i !== index)
-    }));
-  };
-
-  const handleMenuItemChange = (index: number, field: keyof MenuItem, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      menu: prev.menu.map((item, i) => 
-        i === index ? { ...item, [field]: value } : item
-      )
+      menu: prev.menu.filter((_, itemIndex) => itemIndex !== index),
     }));
   };
 
   const handleHoursChange = (day: string, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      hours: { ...prev.hours, [day]: value }
-    }));
+    updateLocation('hours', {
+      ...formData.location.hours,
+      [day]: value,
+    });
   };
 
-  const compressImage = (file: File, imageType: 'interior' | 'food' | 'logo'): Promise<string> => {
-    const maxDimension = imageType === 'logo' ? 600 : 1600;
-    const quality = imageType === 'logo' ? 0.9 : 0.75;
+  const compressImage = (file: File, imageType: ImageType): Promise<string> => {
+    const maxDimension = imageType === 'logo' ? 800 : 1600;
+    const quality = imageType === 'logo' ? 0.9 : 0.78;
     const outputType = imageType === 'logo' && file.type === 'image/png' ? 'image/png' : 'image/jpeg';
 
     return new Promise((resolve, reject) => {
@@ -115,11 +451,11 @@ export const Builder: React.FC<{ setDetails: (d: BusinessDetails) => void }> = (
         const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
         const width = Math.round(img.width * scale);
         const height = Math.round(img.height * scale);
-
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
+
         if (!ctx) {
           URL.revokeObjectURL(objectUrl);
           reject(new Error('Canvas not supported'));
@@ -141,575 +477,998 @@ export const Builder: React.FC<{ setDetails: (d: BusinessDetails) => void }> = (
     });
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, imageType: 'interior' | 'food' | 'logo') => {
-    const files = e.target.files;
-    if (files) {
-      const file = files[0];
-      try {
-        const data = await compressImage(file, imageType);
-        setFormData(prev => ({
-          ...prev,
-          images: [...prev.images, { type: imageType, data }]
-        }));
-      } catch (err) {
-        console.error('Image compression failed, using original file', err);
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const data = event.target?.result as string;
-          setFormData(prev => ({
-            ...prev,
-            images: [...prev.images, { type: imageType, data }]
-          }));
-        };
-        reader.readAsDataURL(file);
-      }
-    }
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, imageType: ImageType) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    const uploaded = await Promise.all(
+      files.map(async (file) => {
+        try {
+          const data = await compressImage(file, imageType);
+          return { type: imageType, data };
+        } catch (_err) {
+          return await new Promise<{ type: ImageType; data: string }>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              if (typeof reader.result === 'string') {
+                resolve({ type: imageType, data: reader.result });
+              } else {
+                reject(new Error('File read failed'));
+              }
+            };
+            reader.onerror = () => reject(new Error('File read failed'));
+            reader.readAsDataURL(file);
+          });
+        }
+      })
+    );
+
+    setFormData((prev) => ({
+      ...prev,
+      images: [...prev.images, ...uploaded],
+    }));
+
+    event.target.value = '';
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  const handleRemoveImage = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      images: prev.images.filter((_, imageIndex) => imageIndex !== index),
+    }));
+  };
 
-    if (!formData.name || !formData.cuisineType || !formData.phone) {
-      alert('Please fill in all required fields');
-      setIsSubmitting(false);
+  const importMenuFromBulkPaste = () => {
+    const parsed = menuBulkPaste
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [name, description, price, category] = line.split('|').map((item) => item.trim());
+        return {
+          name: name || '',
+          description: description || '',
+          price: price || '',
+          category: category || 'Featured',
+          dietary: [],
+        } as MenuItem;
+      })
+      .filter((item) => item.name && item.description);
+
+    if (!parsed.length) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      menu: [...prev.menu.filter((item) => item.name.trim()), ...parsed],
+    }));
+    setMenuBulkPaste('');
+    setShowBulkPaste(false);
+  };
+
+  const normalizeDetailsForSave = (details: BusinessDetails): BusinessDetails => ({
+    ...details,
+    name: details.name.trim(),
+    cuisineType: details.cuisineType.trim(),
+    brand: {
+      ...details.brand,
+      summary: details.brand.summary.trim(),
+      story: details.brand.story?.trim() || '',
+      heroPhrase: details.brand.heroPhrase?.trim() || '',
+      atmosphere: details.brand.atmosphere?.trim() || '',
+      audience: details.brand.audience?.trim() || '',
+      keywords: details.brand.keywords,
+    },
+    menu: details.menu
+      .map((item) => ({
+        ...item,
+        name: item.name.trim(),
+        description: item.description.trim(),
+        price: item.price.trim(),
+        category: item.category.trim(),
+      }))
+      .filter((item) => item.name && item.description && item.price && item.category),
+    signatureDishes: details.signatureDishes,
+    location: {
+      ...details.location,
+      city: details.location.city.trim(),
+      address: details.location.address.trim(),
+      phone: details.location.phone.trim(),
+      email: details.location.email.trim(),
+      googleMapsLink: normalizeUrl(details.location.googleMapsLink || ''),
+      hours: details.location.hours,
+    },
+    socialLinks: {
+      ...details.socialLinks,
+      instagram: normalizeHandle(details.socialLinks.instagram || '', 'instagram'),
+      tiktok: normalizeHandle(details.socialLinks.tiktok || '', 'tiktok'),
+      googleReviews: normalizeUrl(details.socialLinks.googleReviews || ''),
+      yelp: normalizeUrl(details.socialLinks.yelp || ''),
+      facebook: normalizeUrl(details.socialLinks.facebook || ''),
+    },
+    ordering: {
+      ...details.ordering,
+      url: normalizeUrl(details.ordering.url || ''),
+    },
+    reservations: {
+      ...details.reservations,
+      url: normalizeUrl(details.reservations.url || ''),
+    },
+    advanced: {
+      ...details.advanced,
+      founderName: details.advanced?.founderName?.trim() || '',
+      neighborhood: details.advanced?.neighborhood?.trim() || '',
+      parking: details.advanced?.parking?.trim() || '',
+      weeklySpecials: details.advanced?.weeklySpecials?.trim() || '',
+      cateringEmail: details.advanced?.cateringEmail?.trim() || '',
+      awards: details.advanced?.awards || [],
+      dietaryAccommodations: details.advanced?.dietaryAccommodations || [],
+    },
+  });
+
+  const validateStep = (stepId: (typeof stepConfig)[number]['id']) => {
+    if (stepId === 'about') {
+      if (!formData.name.trim() || !formData.cuisineType.trim() || !formData.brand.summary.trim()) {
+        return 'Add your name, cuisine, and short summary.';
+      }
+    }
+
+    if (stepId === 'menu') {
+      if (validMenuItems.length < 1) {
+        return 'Add at least one complete menu item.';
+      }
+    }
+
+    if (stepId === 'location') {
+      if (!formData.location.address.trim() || !formData.location.city.trim() || !formData.location.phone.trim()) {
+        return 'Add your address, city, and phone number.';
+      }
+    }
+
+    return '';
+  };
+
+  const handleNext = () => {
+    const message = validateStep(current.id);
+    if (message) {
+      setStepError(message);
       return;
     }
 
-    setTimeout(() => {
-      setDetails(formData);
-      navigate('/preview');
-    }, 1000);
+    setStepError('');
+    setSkippedSteps((prev) => prev.filter((step) => step !== currentStep));
+    setCurrentStep((prev) => Math.min(prev + 1, stepConfig.length - 1));
   };
 
-  const SectionHeader = ({ id, title, icon }: { id: string; title: string; icon: React.ReactNode }) => (
-    <button
-      type="button"
-      onClick={() => setExpandedSection(expandedSection === id ? '' : id)}
-      className="w-full flex items-center justify-between px-6 py-4 bg-slate-100 hover:bg-slate-200 border-b border-slate-200 transition"
-    >
-      <div className="flex items-center gap-3">
-        {icon}
-        <h3 className="font-semibold text-slate-900">{title}</h3>
-      </div>
-      <ChevronDown size={20} className={`transition transform ${expandedSection === id ? 'rotate-180' : ''}`} />
-    </button>
-  );
+  const handleSkip = () => {
+    setStepError('');
+    setSkippedSteps((prev) => (prev.includes(currentStep) ? prev : [...prev, currentStep]));
+    setCurrentStep((prev) => Math.min(prev + 1, stepConfig.length - 1));
+  };
 
-  return (
-    <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6">
-      <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
-        <div className="px-8 py-6 border-b border-slate-100 bg-gradient-to-r from-orange-600 to-amber-600">
-          <h2 className="text-3xl font-bold text-white font-serif">Create Your Restaurant Website</h2>
-          <p className="text-orange-100 mt-1">Complete form with your restaurant details, menu, and social links</p>
+  const goToStep = (index: number) => {
+    setStepError('');
+    setCurrentStep(index);
+  };
+
+  const handleBack = () => {
+    setStepError('');
+    if (currentStep === 0) {
+      navigate('/');
+      return;
+    }
+    setCurrentStep((prev) => Math.max(prev - 1, 0));
+  };
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const blockingStep = stepConfig.find((step) => !step.optional && validateStep(step.id));
+    if (blockingStep) {
+      setCurrentStep(stepConfig.findIndex((step) => step.id === blockingStep.id));
+      setStepError(validateStep(blockingStep.id));
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStepError('');
+
+    const cleanDetails = normalizeDetailsForSave(formData);
+
+    window.setTimeout(() => {
+      setDetails(cleanDetails);
+      navigate('/preview');
+    }, 350);
+  };
+
+  const fillRandomExample = () => {
+    const variants: Array<'italian' | 'cafe' | 'indian'> = ['italian', 'cafe', 'indian'];
+    const variant = variants[Math.floor(Math.random() * variants.length)];
+    setFormData(buildExampleRestaurant(variant));
+    setCurrentStep(0);
+    setSkippedSteps([]);
+    setStepError('');
+    setShowBulkPaste(false);
+    setShowMoreDetails(false);
+    setShowMoreContact(false);
+  };
+
+  const getStepState = (index: number) => {
+    if (index === currentStep) return 'current';
+    if (skippedSteps.includes(index)) return 'skipped';
+    if (index < currentStep) return 'visited';
+    return 'upcoming';
+  };
+
+  const inputClassName =
+    'w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/22 focus:border-orange-300/60 focus:bg-white/[0.05]';
+
+  const renderStep = () => {
+    if (current.id === 'about') {
+      return (
+        <div className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <input
+              value={formData.name}
+              onChange={(event) => setFormData((prev) => ({ ...prev, name: event.target.value }))}
+              className={inputClassName}
+              placeholder="Restaurant name"
+            />
+            <input
+              value={formData.cuisineType}
+              onChange={(event) => setFormData((prev) => ({ ...prev, cuisineType: event.target.value }))}
+              className={inputClassName}
+              placeholder="Cuisine type"
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <select
+              value={formData.priceRange}
+              onChange={(event) =>
+                setFormData((prev) => ({ ...prev, priceRange: event.target.value as BusinessDetails['priceRange'] }))
+              }
+              className={inputClassName}
+            >
+              <option value="$">$</option>
+              <option value="$$">$$</option>
+              <option value="$$$">$$$</option>
+            </select>
+            <input
+              value={formData.brand.heroPhrase || ''}
+              onChange={(event) => updateBrand('heroPhrase', event.target.value)}
+              className={inputClassName}
+              placeholder="Optional homepage line"
+            />
+          </div>
+          <textarea
+            value={formData.brand.summary}
+            onChange={(event) => updateBrand('summary', event.target.value)}
+            className={`${inputClassName} min-h-[132px] resize-none`}
+            placeholder="Short brand summary"
+          />
         </div>
+      );
+    }
 
-        <form onSubmit={handleSubmit} className="divide-y divide-slate-200">
+    if (current.id === 'services') {
+      return (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {[
+            ['dineIn', 'Dine-in'],
+            ['takeout', 'Takeout'],
+            ['delivery', 'Delivery'],
+            ['catering', 'Catering'],
+            ['privateDining', 'Private dining'],
+          ].map(([key, label]) => (
+            <label
+              key={key}
+              className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3"
+            >
+              <span className="text-sm text-white/78">{label}</span>
+              <input
+                type="checkbox"
+                checked={formData.services[key as keyof BusinessDetails['services']]}
+                onChange={(event) => updateService(key as keyof BusinessDetails['services'], event.target.checked)}
+                className="h-4 w-4 rounded border-white/20 bg-transparent text-orange-400"
+              />
+            </label>
+          ))}
+        </div>
+      );
+    }
 
-          {/* BASIC INFO */}
-          {expandedSection === 'basic' && (
-            <div className="p-8 space-y-6 bg-slate-50">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Restaurant Name *</label>
+    if (current.id === 'style') {
+      return (
+        <div className="space-y-6">
+          <div>
+            <div className="mb-3 text-sm text-white/58">Website style</div>
+            <div className="flex flex-wrap gap-3">
+              {styleOptions.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setFormData((prev) => ({ ...prev, style: option }))}
+                  className={`rounded-full border px-4 py-2.5 text-sm transition ${
+                    formData.style === option
+                      ? 'border-orange-300/70 bg-orange-400/10 text-white'
+                      : 'border-white/10 bg-white/[0.03] text-white/65 hover:text-white'
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-3 text-sm text-white/58">Tone</div>
+            <div className="flex flex-wrap gap-3">
+              {toneOptions.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setFormData((prev) => ({ ...prev, tone: option }))}
+                  className={`rounded-full border px-4 py-2.5 text-sm transition ${
+                    formData.tone === option
+                      ? 'border-orange-300/70 bg-orange-400/10 text-white'
+                      : 'border-white/10 bg-white/[0.03] text-white/65 hover:text-white'
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-3 text-sm text-white/58">Homepage focus</div>
+            <div className="flex flex-wrap gap-3">
+              {heroFocusOptions.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => updateBrand('heroFocus', option)}
+                  className={`rounded-full border px-4 py-2.5 text-sm transition ${
+                    formData.brand.heroFocus === option
+                      ? 'border-orange-300/70 bg-orange-400/10 text-white'
+                      : 'border-white/10 bg-white/[0.03] text-white/65 hover:text-white'
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <input
+              value={formData.brand.atmosphere || ''}
+              onChange={(event) => updateBrand('atmosphere', event.target.value)}
+              className={inputClassName}
+              placeholder="Atmosphere (optional)"
+            />
+            <input
+              value={formData.brand.keywords.join(', ')}
+              onChange={(event) => updateBrand('keywords', parseCommaList(event.target.value))}
+              className={inputClassName}
+              placeholder="Brand keywords (optional)"
+            />
+          </div>
+        </div>
+      );
+    }
+
+    if (current.id === 'menu') {
+      return (
+        <div className="space-y-5">
+          <div className="space-y-3">
+            {formData.menu.map((item, index) => (
+              <div key={index} className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
                   <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
-                    placeholder="e.g. La Bella Pizza"
+                    value={item.category}
+                    onChange={(event) => handleMenuItemChange(index, 'category', event.target.value)}
+                    className={inputClassName}
+                    placeholder="Category"
+                  />
+                  <input
+                    value={item.price}
+                    onChange={(event) => handleMenuItemChange(index, 'price', event.target.value)}
+                    className={inputClassName}
+                    placeholder="Price"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Cuisine Type *</label>
-                  <input
-                    type="text"
-                    value={formData.cuisineType}
-                    onChange={(e) => setFormData({ ...formData, cuisineType: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
-                    placeholder="e.g. Italian, Indian, Mexican"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Tagline</label>
                 <input
-                  type="text"
-                  value={formData.tagline}
-                  onChange={(e) => setFormData({ ...formData, tagline: e.target.value })}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
-                  placeholder="e.g. Authentic Neapolitan Pizza"
+                  value={item.name}
+                  onChange={(event) => handleMenuItemChange(index, 'name', event.target.value)}
+                  className={inputClassName}
+                  placeholder="Item name"
                 />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <textarea
+                  value={item.description}
+                  onChange={(event) => handleMenuItemChange(index, 'description', event.target.value)}
+                  className={`${inputClassName} min-h-[88px] resize-none`}
+                  placeholder="Short description"
+                />
+                <div className="flex flex-wrap gap-2">
+                  {dietaryOptions.map((option) => {
+                    const selected = item.dietary?.includes(option) || false;
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() =>
+                          handleMenuItemChange(
+                            index,
+                            'dietary',
+                            selected
+                              ? (item.dietary || []).filter((tag) => tag !== option)
+                              : [...(item.dietary || []), option]
+                          )
+                        }
+                        className={`rounded-full border px-3 py-2 text-xs uppercase tracking-[0.16em] transition ${
+                          selected
+                            ? 'border-orange-300/70 bg-orange-400/10 text-white'
+                            : 'border-white/10 bg-white/[0.03] text-white/45 hover:text-white/70'
+                        }`}
+                      >
+                        {option}
+                      </button>
+                    );
+                  })}
+                </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Price Range</label>
-                  <select
-                    value={formData.priceRange}
-                    onChange={(e) => setFormData({ ...formData, priceRange: e.target.value as '$' | '$$' | '$$$' })}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveMenuItem(index)}
+                    className="inline-flex items-center gap-2 text-sm text-white/46 transition hover:text-white/75"
                   >
-                    <option value="$">$ (Budget-friendly)</option>
-                    <option value="$$">$$ (Moderate)</option>
-                    <option value="$$$">$$$ (Upscale)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Phone *</label>
-                  <input type="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" placeholder="(555) 123-4567" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Email</label>
-                  <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" placeholder="contact@restaurant.com" />
+                    <Trash2 size={14} />
+                    Remove item
+                  </button>
                 </div>
               </div>
+            ))}
+          </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">City</label>
-                  <input type="text" value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" placeholder="e.g. San Francisco" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Address</label>
-                  <input type="text" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" placeholder="123 Main St" />
-                </div>
-              </div>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={handleAddMenuItem}
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 px-4 py-2.5 text-sm text-white/72 transition hover:bg-white/[0.05] hover:text-white"
+            >
+              <Plus size={16} />
+              Add item
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowBulkPaste((prev) => !prev)}
+              className="rounded-full border border-white/10 px-4 py-2.5 text-sm text-white/72 transition hover:bg-white/[0.05] hover:text-white"
+            >
+              {showBulkPaste ? 'Hide bulk paste' : 'Bulk paste'}
+            </button>
+          </div>
 
-              <div className="space-y-3">
-                <label className="block text-sm font-semibold text-slate-700">Services Offered</label>
-                <div className="space-y-2">
-                  {[
-                    { key: 'dineIn', label: 'Dine-in' },
-                    { key: 'takeout', label: 'Takeout' },
-                    { key: 'delivery', label: 'Delivery' }
-                  ].map(({ key, label }) => (
-                    <label key={key} className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={(formData as any)[key]}
-                        onChange={(e) => setFormData({ ...formData, [key]: e.target.checked })}
-                        className="w-4 h-4 rounded border-slate-300 text-orange-600"
-                      />
-                      <span className="text-slate-700">{label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+          {showBulkPaste ? (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <p className="mb-3 text-sm text-white/58">Use one line per item: Name | Description | Price | Category</p>
+              <textarea
+                value={menuBulkPaste}
+                onChange={(event) => setMenuBulkPaste(event.target.value)}
+                className={`${inputClassName} min-h-[150px] resize-none`}
+                placeholder={'Margherita Pizza | Tomato, mozzarella, basil | $18 | Pizza\nRigatoni Vodka | Tomato cream sauce | $21 | Pasta'}
+              />
+              <button
+                type="button"
+                onClick={importMenuFromBulkPaste}
+                className="mt-4 rounded-full border border-orange-300/30 bg-orange-400/10 px-4 py-2.5 text-sm text-white transition hover:bg-orange-400/16"
+              >
+                Import lines
+              </button>
             </div>
-          )}
-          <SectionHeader id="basic" title="📋 Basic Info" icon={<span>🏷️</span>} />
+          ) : null}
+        </div>
+      );
+    }
 
-          {/* ABOUT THE RESTAURANT */}
-          {expandedSection === 'about' && (
-            <div className="p-8 space-y-6 bg-slate-50">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Year Founded</label>
-                  <input type="number" value={formData.yearFounded || ''} onChange={(e) => setFormData({ ...formData, yearFounded: parseInt(e.target.value) })} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" placeholder="2015" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Founder / Chef Name</label>
-                  <input type="text" value={formData.founderName || ''} onChange={(e) => setFormData({ ...formData, founderName: e.target.value })} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" placeholder="e.g. Marco Rossi" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Short Description</label>
-                <input type="text" value={formData.shortDescription || ''} onChange={(e) => setFormData({ ...formData, shortDescription: e.target.value })} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" placeholder="1-2 sentence description" />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Your Story</label>
-                <textarea value={formData.fullStory || ''} onChange={(e) => setFormData({ ...formData, fullStory: e.target.value })} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none h-24 resize-none" placeholder="Tell your restaurant's story..." />
-              </div>
+    if (current.id === 'operations') {
+      return (
+        <div className="space-y-6">
+          <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <label className="flex items-center justify-between">
+              <span className="text-sm text-white/78">Accept reservations</span>
+              <input
+                type="checkbox"
+                checked={formData.reservations.enabled}
+                onChange={(event) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    reservations: { ...prev.reservations, enabled: event.target.checked },
+                  }))
+                }
+                className="h-4 w-4 rounded border-white/20 bg-transparent text-orange-400"
+              />
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <select
+                value={formData.reservations.provider}
+                onChange={(event) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    reservations: { ...prev.reservations, provider: event.target.value as ReservationProvider },
+                  }))
+                }
+                className={inputClassName}
+              >
+                {reservationProviders.map((provider) => (
+                  <option key={provider.value} value={provider.value}>
+                    {provider.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={formData.reservations.url || ''}
+                onChange={(event) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    reservations: { ...prev.reservations, url: event.target.value },
+                  }))
+                }
+                className={inputClassName}
+                placeholder="Reservation URL"
+              />
             </div>
-          )}
-          <SectionHeader id="about" title="📖 About Your Restaurant" icon={<span>🎭</span>} />
+          </div>
 
-          {/* ONLINE ORDERING & RESERVATIONS */}
-          {expandedSection === 'ordering' && (
-            <div className="p-8 space-y-8 bg-slate-50">
-              <div>
-                <h4 className="font-semibold text-slate-900 mb-4 flex items-center gap-2"><span>🛒</span> Online Ordering</h4>
-                <label className="flex items-center gap-3 cursor-pointer mb-4">
-                  <input
-                    type="checkbox"
-                    checked={formData.onlineOrdering.acceptOrders}
-                    onChange={(e) => setFormData({ ...formData, onlineOrdering: { ...formData.onlineOrdering, acceptOrders: e.target.checked } })}
-                    className="w-4 h-4 rounded border-slate-300 text-orange-600"
-                  />
-                  <span className="text-slate-700 font-medium">Accept online orders</span>
-                </label>
-                
-                {formData.onlineOrdering.acceptOrders && (
-                  <div className="space-y-3 pl-7">
-                    <p className="text-sm text-slate-600">Which platforms?</p>
-                    {['DoorDash', 'Uber Eats', 'Toast', 'Square', 'Custom URL'].map((platform, idx) => (
-                      <label key={platform} className="flex items-center gap-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.onlineOrdering.platforms.includes(platform.toLowerCase().replace(' ', '') as any)}
-                          onChange={(e) => {
-                            const plat = platform.toLowerCase().replace(' ', '') as any;
-                            setFormData({
-                              ...formData,
-                              onlineOrdering: {
-                                ...formData.onlineOrdering,
-                                platforms: e.target.checked
-                                  ? [...formData.onlineOrdering.platforms, plat]
-                                  : formData.onlineOrdering.platforms.filter(p => p !== plat)
-                              }
-                            });
-                          }}
-                          className="w-4 h-4 rounded border-slate-300 text-orange-600"
-                        />
-                        <span className="text-slate-700 text-sm">{platform}</span>
-                      </label>
-                    ))}
-                    {formData.onlineOrdering.platforms.includes('custom') && (
-                      <input
-                        type="url"
-                        value={formData.onlineOrdering.customURL || ''}
-                        onChange={(e) => setFormData({ ...formData, onlineOrdering: { ...formData.onlineOrdering, customURL: e.target.value } })}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none text-sm"
-                        placeholder="https://yourrestaurant.com/order"
-                      />
-                    )}
+          <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <label className="flex items-center justify-between">
+              <span className="text-sm text-white/78">Accept online orders</span>
+              <input
+                type="checkbox"
+                checked={formData.ordering.enabled}
+                onChange={(event) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    ordering: { ...prev.ordering, enabled: event.target.checked },
+                  }))
+                }
+                className="h-4 w-4 rounded border-white/20 bg-transparent text-orange-400"
+              />
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <select
+                value={formData.ordering.provider}
+                onChange={(event) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    ordering: { ...prev.ordering, provider: event.target.value as OrderingProvider },
+                  }))
+                }
+                className={inputClassName}
+              >
+                {orderingProviders.map((provider) => (
+                  <option key={provider.value} value={provider.value}>
+                    {provider.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={formData.ordering.url || ''}
+                onChange={(event) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    ordering: { ...prev.ordering, url: event.target.value },
+                  }))
+                }
+                className={inputClassName}
+                placeholder="Ordering URL"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-3 text-sm text-white/58">Primary CTA</div>
+            <div className="flex flex-wrap gap-3">
+              {[
+                ['reservations', 'Reservations'],
+                ['online-orders', 'Online orders'],
+                ['calls', 'Calls'],
+                ['visits', 'Visits'],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setFormData((prev) => ({ ...prev, primaryCta: value as PrimaryCta }))}
+                  className={`rounded-full border px-4 py-2.5 text-sm transition ${
+                    formData.primaryCta === value
+                      ? 'border-orange-300/70 bg-orange-400/10 text-white'
+                      : 'border-white/10 bg-white/[0.03] text-white/65 hover:text-white'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (current.id === 'location') {
+      return (
+        <div className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <input
+              value={formData.location.address}
+              onChange={(event) => updateLocation('address', event.target.value)}
+              className={inputClassName}
+              placeholder="Address"
+            />
+            <input
+              value={formData.location.city}
+              onChange={(event) => updateLocation('city', event.target.value)}
+              className={inputClassName}
+              placeholder="City"
+            />
+            <input
+              value={formData.location.phone}
+              onChange={(event) => updateLocation('phone', event.target.value)}
+              className={inputClassName}
+              placeholder="Phone"
+            />
+            <input
+              value={formData.location.email}
+              onChange={(event) => updateLocation('email', event.target.value)}
+              className={inputClassName}
+              placeholder="Email"
+            />
+          </div>
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowMoreContact((prev) => !prev)}
+              className="text-sm font-medium text-white/72 transition hover:text-white"
+            >
+              {showMoreContact ? 'Hide extra contact details' : 'Add more contact details'}
+            </button>
+          </div>
+          {showMoreContact ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <input
+                value={formData.location.googleMapsLink || ''}
+                onChange={(event) => updateLocation('googleMapsLink', event.target.value)}
+                className={inputClassName}
+                placeholder="Google Maps link"
+              />
+              <input
+                value={formData.socialLinks.instagram || ''}
+                onChange={(event) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    socialLinks: { ...prev.socialLinks, instagram: event.target.value },
+                  }))
+                }
+                className={inputClassName}
+                placeholder="Instagram (optional)"
+              />
+              <input
+                value={formData.socialLinks.googleReviews || ''}
+                onChange={(event) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    socialLinks: { ...prev.socialLinks, googleReviews: event.target.value },
+                  }))
+                }
+                className={inputClassName}
+                placeholder="Google reviews link (optional)"
+              />
+            </div>
+          ) : null}
+          <div className="grid gap-3 sm:grid-cols-2">
+            {daysOfWeek.map((day) => (
+              <input
+                key={day}
+                value={formData.location.hours[day]}
+                onChange={(event) => handleHoursChange(day, event.target.value)}
+                className={inputClassName}
+                placeholder={`${day}: 11:00 AM - 9:00 PM`}
+              />
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (current.id === 'assets') {
+      return (
+        <div className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-3">
+            {(['food', 'interior', 'logo'] as ImageType[]).map((type) => (
+              <label
+                key={type}
+                className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-white/14 bg-white/[0.03] px-4 py-8 text-center transition hover:border-white/22 hover:bg-white/[0.05]"
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple={type !== 'logo'}
+                  onChange={(event) => handleFileUpload(event, type)}
+                  className="hidden"
+                />
+                <Upload size={18} className="text-white/60" />
+                <div className="text-sm text-white/78">{imageLabelByType[type]}</div>
+              </label>
+            ))}
+          </div>
+
+          <label className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+            <span className="text-sm text-white/78">Use stock image fallback</span>
+            <input
+              type="checkbox"
+              checked={formData.useStockImages}
+              onChange={(event) => setFormData((prev) => ({ ...prev, useStockImages: event.target.checked }))}
+              className="h-4 w-4 rounded border-white/20 bg-transparent text-orange-400"
+            />
+          </label>
+
+          {formData.images.length > 0 ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {formData.images.map((image, index) => (
+                <div key={`${image.type}-${index}`} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+                  <div className="relative aspect-[4/3]">
+                    <img src={image.data} alt={image.type} className="h-full w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveImage(index)}
+                      className="absolute right-3 top-3 rounded-full border border-black/10 bg-black/45 p-2 text-white transition hover:bg-black/60"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
-                )}
-              </div>
-
-              <div>
-                <h4 className="font-semibold text-slate-900 mb-4 flex items-center gap-2"><span>📅</span> Reservations</h4>
-                <label className="flex items-center gap-3 cursor-pointer mb-4">
-                  <input
-                    type="checkbox"
-                    checked={formData.reservations.acceptReservations}
-                    onChange={(e) => setFormData({ ...formData, reservations: { ...formData.reservations, acceptReservations: e.target.checked } })}
-                    className="w-4 h-4 rounded border-slate-300 text-orange-600"
-                  />
-                  <span className="text-slate-700 font-medium">Accept reservations</span>
-                </label>
-                
-                {formData.reservations.acceptReservations && (
-                  <div className="space-y-3 pl-7">
-                    <p className="text-sm text-slate-600">Which system?</p>
-                    {['OpenTable', 'Resy', 'Yelp', 'Phone'].map((platform) => (
-                      <label key={platform} className="flex items-center gap-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.reservations.platforms.includes(platform.toLowerCase() as any)}
-                          onChange={(e) => {
-                            const plat = platform.toLowerCase() as any;
-                            setFormData({
-                              ...formData,
-                              reservations: {
-                                ...formData.reservations,
-                                platforms: e.target.checked
-                                  ? [...formData.reservations.platforms, plat]
-                                  : formData.reservations.platforms.filter(p => p !== plat)
-                              }
-                            });
-                          }}
-                          className="w-4 h-4 rounded border-slate-300 text-orange-600"
-                        />
-                        <span className="text-slate-700 text-sm">{platform}</span>
-                      </label>
-                    ))}
-                    {(formData.reservations.platforms.includes('opentable') || formData.reservations.platforms.includes('resy')) && (
-                      <input
-                        type="url"
-                        value={formData.reservations.url || ''}
-                        onChange={(e) => setFormData({ ...formData, reservations: { ...formData.reservations, url: e.target.value } })}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none text-sm"
-                        placeholder="https://www.opentable.com/..."
-                      />
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          <SectionHeader id="ordering" title="🛒 Ordering & Reservations" icon={<span>📱</span>} />
-
-          {/* LOCATION & MAPS */}
-          {expandedSection === 'location' && (
-            <div className="p-8 space-y-6 bg-slate-50">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Google Maps Link</label>
-                <input type="url" value={formData.googleMapsLink || ''} onChange={(e) => setFormData({ ...formData, googleMapsLink: e.target.value })} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" placeholder="https://maps.google.com/..." />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Neighborhood (Optional)</label>
-                <input type="text" value={formData.neighborhood || ''} onChange={(e) => setFormData({ ...formData, neighborhood: e.target.value })} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" placeholder="e.g. Hayes Valley" />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Parking Info</label>
-                <input type="text" value={formData.parking || ''} onChange={(e) => setFormData({ ...formData, parking: e.target.value })} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" placeholder="e.g. Street parking available, Valet available" />
-              </div>
-            </div>
-          )}
-          <SectionHeader id="location" title="🗺️ Location & Maps" icon={<span>📍</span>} />
-
-          {/* SOCIAL LINKS */}
-          {expandedSection === 'social' && (
-            <div className="p-8 space-y-4 bg-slate-50">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Instagram Handle</label>
-                <input type="text" value={formData.socialLinks.instagram || ''} onChange={(e) => setFormData({ ...formData, socialLinks: { ...formData.socialLinks, instagram: e.target.value } })} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" placeholder="@yourrestaurant" />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">TikTok Handle</label>
-                <input type="text" value={formData.socialLinks.tiktok || ''} onChange={(e) => setFormData({ ...formData, socialLinks: { ...formData.socialLinks, tiktok: e.target.value } })} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" placeholder="@yourrestaurant" />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Google Reviews Link</label>
-                <input type="url" value={formData.socialLinks.googleReviews || ''} onChange={(e) => setFormData({ ...formData, socialLinks: { ...formData.socialLinks, googleReviews: e.target.value } })} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" placeholder="Google Maps/Reviews URL" />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Yelp URL</label>
-                <input type="url" value={formData.socialLinks.yelp || ''} onChange={(e) => setFormData({ ...formData, socialLinks: { ...formData.socialLinks, yelp: e.target.value } })} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" placeholder="https://www.yelp.com/..." />
-              </div>
-            </div>
-          )}
-          <SectionHeader id="social" title="📱 Social Links" icon={<span>🔗</span>} />
-
-          {/* HOURS */}
-          {expandedSection === 'hours' && (
-            <div className="p-8 space-y-4 bg-slate-50">
-              {daysOfWeek.map(day => (
-                <div key={day}>
-                  <label className="text-sm font-semibold text-slate-700 block mb-2">{day}</label>
-                  <input
-                    type="text"
-                    value={formData.hours[day]}
-                    onChange={(e) => handleHoursChange(day, e.target.value)}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none text-sm"
-                    placeholder="e.g. 11:00 AM - 10:00 PM"
-                  />
+                  <div className="px-4 py-3 text-sm text-white/65">{imageLabelByType[image.type]}</div>
                 </div>
               ))}
             </div>
-          )}
-          <SectionHeader id="hours" title="🕐 Opening Hours" icon={<span>⏰</span>} />
+          ) : null}
+        </div>
+      );
+    }
 
-          {/* MENU */}
-          {expandedSection === 'menu' && (
-            <div className="p-8 space-y-6 bg-slate-50">
-              <div className="space-y-4">
-                {formData.menu.map((item, idx) => (
-                  <div key={idx} className="p-4 bg-white border border-slate-200 rounded-lg space-y-3">
-                    <div className="flex justify-between items-start mb-3">
-                      <h4 className="font-semibold text-slate-900">Item {idx + 1}</h4>
-                      <button type="button" onClick={() => handleRemoveMenuItem(idx)} className="p-1 text-red-500 hover:bg-red-50 rounded">
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <input
-                        type="text"
-                        value={item.name}
-                        onChange={(e) => handleMenuItemChange(idx, 'name', e.target.value)}
-                        placeholder="Item name"
-                        className="px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm"
-                      />
-                      <input
-                        type="text"
-                        value={item.category}
-                        onChange={(e) => handleMenuItemChange(idx, 'category', e.target.value)}
-                        placeholder="Category (e.g. Appetizers)"
-                        className="px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm"
-                      />
-                    </div>
-                    <input
-                      type="text"
-                      value={item.description}
-                      onChange={(e) => handleMenuItemChange(idx, 'description', e.target.value)}
-                      placeholder="Description"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm"
-                    />
-                    <input
-                      type="number"
-                      value={item.price}
-                      onChange={(e) => handleMenuItemChange(idx, 'price', parseFloat(e.target.value))}
-                      placeholder="Price"
-                      className="px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm"
-                      step="0.01"
-                    />
-                  </div>
-                ))}
+    return (
+      <div className="space-y-5">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+          <div className="space-y-3 text-sm text-white/72">
+            <div className="flex justify-between gap-4 border-b border-white/8 pb-3">
+              <span className="text-white/45">Restaurant</span>
+              <span>{formData.name || 'Not added'}</span>
+            </div>
+            <div className="flex justify-between gap-4 border-b border-white/8 pb-3">
+              <span className="text-white/45">Cuisine</span>
+              <span>{formData.cuisineType || 'Not added'}</span>
+            </div>
+            <div className="flex justify-between gap-4 border-b border-white/8 pb-3">
+              <span className="text-white/45">Menu items</span>
+              <span>{validMenuItems.length}</span>
+            </div>
+            <div className="flex justify-between gap-4 border-b border-white/8 pb-3">
+              <span className="text-white/45">Main CTA</span>
+              <span>{formData.primaryCta}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-white/45">Images</span>
+              <span>{formData.images.length || 0}</span>
+            </div>
+          </div>
+        </div>
+
+        {reviewWarnings.length ? (
+          <div className="space-y-3">
+            {reviewWarnings.map((warning) => (
+              <div key={warning} className="rounded-2xl border border-orange-400/20 bg-orange-400/10 px-4 py-3 text-sm text-orange-100/88">
+                {warning}
               </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100/90">
+            Looks good. You have enough detail for a strong first draft.
+          </div>
+        )}
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <button
+            type="button"
+            onClick={() => setShowMoreDetails((prev) => !prev)}
+            className="text-sm font-medium text-white/78 transition hover:text-white"
+          >
+            {showMoreDetails ? 'Hide extra details' : 'Add more details'}
+          </button>
+
+          {showMoreDetails ? (
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <input
+                value={formData.brand.story || ''}
+                onChange={(event) => updateBrand('story', event.target.value)}
+                className={`${inputClassName} sm:col-span-2`}
+                placeholder="Optional story"
+              />
+              <input
+                value={formData.advanced?.founderName || ''}
+                onChange={(event) => updateAdvanced('founderName', event.target.value)}
+                className={inputClassName}
+                placeholder="Founder or chef name"
+              />
+              <input
+                type="number"
+                value={formData.advanced?.yearFounded ?? ''}
+                onChange={(event) => updateAdvanced('yearFounded', event.target.value ? Number(event.target.value) : undefined)}
+                className={inputClassName}
+                placeholder="Year founded"
+              />
+              <input
+                value={formData.advanced?.neighborhood || ''}
+                onChange={(event) => updateAdvanced('neighborhood', event.target.value)}
+                className={inputClassName}
+                placeholder="Neighborhood"
+              />
+              <input
+                value={formData.advanced?.parking || ''}
+                onChange={(event) => updateAdvanced('parking', event.target.value)}
+                className={inputClassName}
+                placeholder="Parking"
+              />
+              <textarea
+                value={formData.advanced?.weeklySpecials || ''}
+                onChange={(event) => updateAdvanced('weeklySpecials', event.target.value)}
+                className={`${inputClassName} min-h-[96px] resize-none sm:col-span-2`}
+                placeholder="Weekly specials or events"
+              />
+              <input
+                value={formData.advanced?.cateringEmail || ''}
+                onChange={(event) => updateAdvanced('cateringEmail', event.target.value)}
+                className={inputClassName}
+                placeholder="Catering email"
+              />
+              <input
+                type="number"
+                value={formData.advanced?.privateEventCapacity ?? ''}
+                onChange={(event) =>
+                  updateAdvanced('privateEventCapacity', event.target.value ? Number(event.target.value) : undefined)
+                }
+                className={inputClassName}
+                placeholder="Private event capacity"
+              />
+              <textarea
+                value={(formData.advanced?.awards || []).join(', ')}
+                onChange={(event) => updateAdvanced('awards', parseCommaList(event.target.value))}
+                className={`${inputClassName} min-h-[96px] resize-none sm:col-span-2`}
+                placeholder="Awards or press"
+              />
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
+
+  const progress = ((currentStep + 1) / stepConfig.length) * 100;
+
+  return (
+    <div className="min-h-screen bg-[#09090d] px-4 py-10 text-white sm:px-6">
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-8 space-y-3">
+          <div className="flex items-center justify-between text-sm text-white/52">
+            <span>
+              Step {currentStep + 1} of {stepConfig.length}
+            </span>
+            <span>{current.optional && current.id !== 'review' ? 'Optional' : 'Required'}</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-white/10">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <div className="flex flex-wrap gap-2 pt-2">
+            {stepConfig.map((step, index) => {
+              const state = getStepState(index);
+              return (
+                <button
+                  key={step.id}
+                  type="button"
+                  onClick={() => goToStep(index)}
+                  className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                    state === 'current'
+                      ? 'border-orange-300/70 bg-orange-400/12 text-white'
+                      : state === 'skipped'
+                        ? 'border-white/12 bg-white/[0.02] text-white/55'
+                        : state === 'visited'
+                          ? 'border-white/14 bg-white/[0.04] text-white/72'
+                          : 'border-white/8 bg-transparent text-white/35 hover:text-white/60'
+                  }`}
+                >
+                  {index + 1}. {step.title.replace('Tell us about your restaurant', 'About').replace('What services do you offer?', 'Services').replace('Choose the look and tone', 'Style').replace('Add a few menu highlights', 'Menu').replace('How should customers book or order?', 'Booking').replace('How should customers contact you?', 'Contact').replace('Add photos and assets', 'Photos').replace('Review and generate', 'Review')}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="rounded-[32px] border border-white/10 bg-[#111116] p-6 shadow-[0_35px_90px_-45px_rgba(0,0,0,0.9)] sm:p-8">
+          <div className="mb-8 space-y-2">
+            <h1 className="text-3xl font-semibold tracking-tight text-white">{current.title}</h1>
+            <p className="text-sm text-white/52">{current.helper}</p>
+          </div>
+
+          {currentStep === 0 ? (
+            <div className="mb-6">
               <button
                 type="button"
-                onClick={handleAddMenuItem}
-                className="w-full py-2 border border-dashed border-orange-300 rounded-lg text-orange-600 hover:bg-orange-50 font-semibold flex items-center justify-center gap-2"
+                onClick={fillRandomExample}
+                className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white/78 transition hover:bg-white/[0.06] hover:text-white"
               >
-                <Plus size={18} /> Add Menu Item
+                Fill with a random example
               </button>
             </div>
-          )}
-          <SectionHeader id="menu" title="🍽️ Menu Items" icon={<span>📋</span>} />
+          ) : null}
 
-          {/* EVENTS & CATERING */}
-          {expandedSection === 'events' && (
-            <div className="p-8 space-y-8 bg-slate-50">
-              <div>
-                <h4 className="font-semibold text-slate-900 mb-4">🎵 Events & Specials</h4>
-                <label className="flex items-center gap-3 cursor-pointer mb-4">
-                  <input
-                    type="checkbox"
-                    checked={formData.hostEvents}
-                    onChange={(e) => setFormData({ ...formData, hostEvents: e.target.checked })}
-                    className="w-4 h-4 rounded border-slate-300 text-orange-600"
-                  />
-                  <span className="text-slate-700 font-medium">We host events</span>
-                </label>
-                {formData.hostEvents && (
-                  <textarea value={formData.weeklySpecials || ''} onChange={(e) => setFormData({ ...formData, weeklySpecials: e.target.value })} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none h-20" placeholder="e.g. Tuesday: $5 wine night. Friday: Live jazz music 7-10pm" />
-                )}
-              </div>
+          {renderStep()}
 
-              <div>
-                <h4 className="font-semibold text-slate-900 mb-4">🎂 Catering & Private Events</h4>
-                <label className="flex items-center gap-3 cursor-pointer mb-4">
-                  <input
-                    type="checkbox"
-                    checked={formData.cateringAvailable}
-                    onChange={(e) => setFormData({ ...formData, cateringAvailable: e.target.checked })}
-                    className="w-4 h-4 rounded border-slate-300 text-orange-600"
-                  />
-                  <span className="text-slate-700 font-medium">We offer catering</span>
-                </label>
-                {formData.cateringAvailable && (
-                  <div className="space-y-3 pl-7">
-                    <input
-                      type="email"
-                      value={formData.cateringEmail || ''}
-                      onChange={(e) => setFormData({ ...formData, cateringEmail: e.target.value })}
-                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
-                      placeholder="catering@restaurant.com"
-                    />
-                    <input
-                      type="number"
-                      value={formData.privateEventCapacity || ''}
-                      onChange={(e) => setFormData({ ...formData, privateEventCapacity: parseInt(e.target.value) })}
-                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
-                      placeholder="Private event capacity (e.g. 60 guests)"
-                    />
-                  </div>
-                )}
-              </div>
+          {stepError ? (
+            <div className="mt-6 rounded-2xl border border-orange-400/20 bg-orange-400/10 px-4 py-3 text-sm text-orange-100/88">
+              {stepError}
             </div>
-          )}
-          <SectionHeader id="events" title="🎉 Events & Catering" icon={<span>🎭</span>} />
+          ) : null}
 
-          {/* STYLE & TONE */}
-          {expandedSection === 'style' && (
-            <div className="p-8 space-y-6 bg-slate-50">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-3">Website Style</label>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {[WebsiteStyle.Clean, WebsiteStyle.Modern, WebsiteStyle.Luxury, WebsiteStyle.Casual].map(style => (
-                    <button
-                      key={style}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, style })}
-                      className={`p-3 rounded-lg border-2 font-semibold transition ${
-                        formData.style === style
-                          ? 'border-orange-600 bg-orange-50 text-orange-900'
-                          : 'border-slate-200 hover:border-slate-300 text-slate-700'
-                      }`}
-                    >
-                      {style}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-3">Restaurant Vibe</label>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                  {Object.values(RestaurantTone).map(tone => (
-                    <button
-                      key={tone}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, tone })}
-                      className={`p-2 rounded-lg border-2 font-semibold text-sm transition ${
-                        formData.tone === tone
-                          ? 'border-orange-600 bg-orange-50 text-orange-900'
-                          : 'border-slate-200 hover:border-slate-300 text-slate-700'
-                      }`}
-                    >
-                      {tone}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-          <SectionHeader id="style" title="🎨 Style & Vibe" icon={<span>✨</span>} />
-
-          {/* IMAGES */}
-          {expandedSection === 'images' && (
-            <div className="p-8 space-y-6 bg-slate-50">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {(['interior', 'food', 'logo'] as const).map(type => (
-                  <div key={type} className="border-2 border-dashed border-slate-300 rounded-lg p-4 text-center">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => handleFileUpload(e, type)}
-                      className="hidden"
-                      id={`upload-${type}`}
-                    />
-                    <label htmlFor={`upload-${type}`} className="cursor-pointer block">
-                      <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                      <span className="text-sm font-semibold text-slate-700 block capitalize">{type} Photo</span>
-                      <span className="text-xs text-slate-500">Click to upload</span>
-                    </label>
-                  </div>
-                ))}
-              </div>
-
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.useStockImages}
-                  onChange={(e) => setFormData({ ...formData, useStockImages: e.target.checked })}
-                  className="w-4 h-4 rounded border-slate-300 text-orange-600"
-                />
-                <span className="text-slate-700 font-semibold">Use AI-selected stock photos for missing images</span>
-              </label>
-            </div>
-          )}
-          <SectionHeader id="images" title="🖼️ Images (Optional)" icon={<span>📸</span>} />
-
-          {/* SUBMIT */}
-          <div className="p-8 bg-white flex justify-between gap-4">
+          <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <button
               type="button"
-              onClick={() => navigate('/')}
-              className="px-6 py-3 border border-slate-300 rounded-xl text-slate-700 font-semibold hover:bg-slate-50 transition"
+              onClick={handleBack}
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 px-5 py-3 text-sm font-medium text-white/72 transition hover:bg-white/[0.05] hover:text-white"
             >
-              Cancel
+              <ArrowLeft size={16} />
+              {currentStep === 0 ? 'Back home' : 'Back'}
             </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-8 py-3 bg-gradient-to-r from-orange-600 to-amber-600 text-white font-semibold rounded-xl hover:from-orange-700 hover:to-amber-700 disabled:opacity-50 transition flex items-center gap-2"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="animate-spin" size={18} />
-                  Generating...
-                </>
+
+            <div className="flex flex-col gap-3 sm:flex-row">
+              {current.id !== 'review' ? (
+                <button
+                  type="button"
+                  onClick={handleSkip}
+                  className="rounded-full border border-white/10 px-5 py-3 text-sm font-medium text-white/72 transition hover:bg-white/[0.05] hover:text-white"
+                >
+                  Skip for now
+                </button>
+              ) : null}
+
+              {current.id === 'review' ? (
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Generating website
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={16} />
+                      Generate Website
+                    </>
+                  )}
+                </button>
               ) : (
-                <>
-                  <Check size={18} />
-                  Generate Website
-                </>
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black transition hover:brightness-105"
+                >
+                  Next
+                  <ArrowRight size={16} />
+                </button>
               )}
-            </button>
+            </div>
           </div>
         </form>
       </div>

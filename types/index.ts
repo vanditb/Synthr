@@ -1,14 +1,14 @@
 export enum BusinessType {
   SmallBusiness = 'Small Business',
   Airbnb = 'Airbnb / Rental',
-  Restaurant = 'Restaurant'
+  Restaurant = 'Restaurant',
 }
 
 export enum WebsiteStyle {
   Clean = 'Clean',
   Modern = 'Modern',
   Luxury = 'Luxury',
-  Casual = 'Casual'
+  Casual = 'Casual',
 }
 
 export enum RestaurantTone {
@@ -16,27 +16,24 @@ export enum RestaurantTone {
   Upscale = 'Upscale',
   Casual = 'Casual',
   Trendy = 'Trendy',
-  Traditional = 'Traditional'
+  Traditional = 'Traditional',
 }
+
+export type PriceRange = '$' | '$$' | '$$$';
+export type HeroFocus = 'Food' | 'Interior' | 'Chef' | 'Story' | 'Events';
+export type PrimaryCta = 'reservations' | 'online-orders' | 'calls' | 'visits';
+export type DomainPreference = 'undecided' | 'synthr-subdomain' | 'custom-domain';
+export type DietaryTag = 'vegetarian' | 'vegan' | 'gluten-free' | 'halal' | 'spicy';
+export type OrderingProvider = 'none' | 'doordash' | 'ubereats' | 'toast' | 'square' | 'phone' | 'custom';
+export type ReservationProvider = 'none' | 'opentable' | 'resy' | 'yelp' | 'phone' | 'custom';
+export type ImageType = 'interior' | 'food' | 'logo';
 
 export interface MenuItem {
   name: string;
   description: string;
-  price: number;
+  price: string;
   category: string;
-  dietary?: ('vegetarian' | 'vegan' | 'gluten-free' | 'halal' | 'spicy')[];
-}
-
-export interface OnlineOrdering {
-  acceptOrders: boolean;
-  platforms: ('doordash' | 'ubereats' | 'toast' | 'square' | 'custom')[];
-  customURL?: string;
-}
-
-export interface ReservationSystem {
-  acceptReservations: boolean;
-  platforms: ('opentable' | 'resy' | 'yelp' | 'phone')[];
-  url?: string;
+  dietary?: DietaryTag[];
 }
 
 export interface SocialLinks {
@@ -47,65 +44,82 @@ export interface SocialLinks {
   facebook?: string;
 }
 
-export interface RestaurantDetails {
-  name: string;
-  cuisineType: string;
-  priceRange: '$' | '$$' | '$$$';
+export interface BrandProfile {
+  summary: string;
+  story?: string;
+  heroPhrase?: string;
+  atmosphere?: string;
+  audience?: string;
+  keywords: string[];
+  heroFocus: HeroFocus;
+}
+
+export interface ServiceOptions {
+  dineIn: boolean;
+  takeout: boolean;
+  delivery: boolean;
+  catering: boolean;
+  privateDining: boolean;
+}
+
+export interface OrderingSetup {
+  enabled: boolean;
+  provider: OrderingProvider;
+  url?: string;
+}
+
+export interface ReservationSetup {
+  enabled: boolean;
+  provider: ReservationProvider;
+  url?: string;
+}
+
+export interface LocationDetails {
   city: string;
   address: string;
   phone: string;
   email: string;
-  hours: Record<string, string>;
-  dineIn: boolean;
-  takeout: boolean;
-  delivery: boolean;
-  tagline?: string;
-  
-  // About/Story
-  shortDescription?: string;
-  fullStory?: string;
-  yearFounded?: number;
-  founderName?: string;
-  
-  // Menu
-  menu: MenuItem[];
-  menuPDFURL?: string;
-  menuImageURLs?: string[];
-  
-  // Ordering & Reservations
-  onlineOrdering: OnlineOrdering;
-  reservations: ReservationSystem;
-  
-  // Location
   googleMapsLink?: string;
-  parking?: string;
-  neighborhood?: string;
-  
-  // Social & Trust
-  socialLinks: SocialLinks;
-  awards?: string[];
-  
-  // Events (optional)
-  hostEvents: boolean;
-  eventTypes?: ('liveMusic' | 'happyHour' | 'brunch' | 'catering')[];
-  weeklySpecials?: string;
-  
-  // Catering
-  cateringAvailable: boolean;
-  cateringEmail?: string;
-  privateEventCapacity?: number;
-  
-  // Style
-  style: WebsiteStyle;
-  tone: RestaurantTone;
-  images: { type: 'interior' | 'food' | 'logo'; data: string }[];
-  useStockImages: boolean;
+  hours: Record<string, string>;
 }
 
-export interface BusinessDetails extends RestaurantDetails {
+export interface UploadedImage {
+  type: ImageType;
+  data: string;
+}
+
+export interface AdvancedDetails {
+  founderName?: string;
+  yearFounded?: number;
+  neighborhood?: string;
+  parking?: string;
+  weeklySpecials?: string;
+  awards?: string[];
+  dietaryAccommodations?: string[];
+  cateringEmail?: string;
+  privateEventCapacity?: number;
+}
+
+export interface BusinessDetails {
   type: BusinessType;
-  pages: string[];
-  description: string;
+  name: string;
+  cuisineType: string;
+  priceRange: PriceRange;
+  style: WebsiteStyle;
+  tone: RestaurantTone;
+  brand: BrandProfile;
+  services: ServiceOptions;
+  primaryCta: PrimaryCta;
+  menu: MenuItem[];
+  signatureDishes: string[];
+  ordering: OrderingSetup;
+  reservations: ReservationSetup;
+  location: LocationDetails;
+  socialLinks: SocialLinks;
+  images: UploadedImage[];
+  useStockImages: boolean;
+  domainPreference: DomainPreference;
+  advanced?: AdvancedDetails;
 }
 
 export interface GeneratedWebsite {
