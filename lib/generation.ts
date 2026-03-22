@@ -6,6 +6,38 @@ type ImageAsset = {
   alt: string;
 };
 
+type GenerationMenuItem = {
+  name?: string;
+  description?: string;
+  price?: unknown;
+  displayPrice?: string;
+  category?: string;
+  dietary?: string[];
+};
+
+export type GenerationContentPlan = {
+  heroSupport?: string;
+  heroHighlights?: string[];
+  storyHeading?: string;
+  storyBody?: string;
+  storyFacts?: string[];
+  menuHeading?: string;
+  menuIntro?: string;
+  menuItemDescriptions?: Array<{
+    name?: string;
+    description?: string;
+  }>;
+  experienceHeading?: string;
+  experienceBody?: string;
+  reserveHeading?: string;
+  reserveBody?: string;
+  orderHeading?: string;
+  orderBody?: string;
+  visitHeading?: string;
+  visitBody?: string;
+  footerTagline?: string;
+};
+
 type GenerationPayload = {
   name?: string;
   type?: string;
@@ -50,6 +82,8 @@ type GenerationPayload = {
     neighborhood?: string;
     parking?: string;
     weeklySpecials?: string;
+    awards?: string[];
+    dietaryAccommodations?: string[];
     cateringEmail?: string;
     privateEventCapacity?: number;
   };
@@ -60,14 +94,7 @@ type GenerationPayload = {
   fullStory?: string;
   yearFounded?: number;
   founderName?: string;
-  menu?: Array<{
-    name?: string;
-    description?: string;
-    price?: unknown;
-    displayPrice?: string;
-    category?: string;
-    dietary?: string[];
-  }>;
+  menu?: GenerationMenuItem[];
   menuSourceText?: string;
   menuSourceImages?: string[];
   onlineOrdering?: {
@@ -101,11 +128,14 @@ type GenerationPayload = {
   customInstruction?: string;
   existingHtml?: string;
   assistantImage?: string;
+  contentPlan?: GenerationContentPlan;
 };
 
 export type GenerationMeta = {
   source: 'model' | 'fallback' | 'existing';
   validationIssues: string[];
+  modelValidationIssues?: string[];
+  finalHtmlValidationIssues?: string[];
 };
 
 export const GENERATION_SYSTEM_PROMPT = `You are a senior restaurant website designer and front-end engineer.
@@ -114,6 +144,13 @@ Use the user's data exactly where facts are provided.
 Do not invent menu items, addresses, phone numbers, hours, or reservation platforms.
 Prefer strong visual hierarchy, clear CTAs, semantic HTML, and mobile-safe layouts.
 Avoid filler marketing language and repetitive section structures.`;
+
+export const GENERATION_CONTENT_PLAN_SYSTEM_PROMPT = `You are a senior restaurant brand strategist and hospitality copywriter.
+Return JSON only.
+Write concise, premium, restaurant-specific copy that feels believable and human.
+Use the provided facts exactly where given.
+Do not invent menu items, addresses, phone numbers, hours, reservation platforms, reviews, or awards.
+Keep copy grounded in hospitality language, not startup or generic marketing language.`;
 
 const cuisineImagePools: Record<string, Record<ImageRole, ImageAsset[]>> = {
   italian: {
@@ -313,6 +350,311 @@ const buildImageAssets = (
     if (cursor > 40) break;
   }
   return assets;
+};
+
+type CuratedMenuItem = {
+  name: string;
+  description: string;
+  price: string;
+  category: string;
+  dietary: string[];
+  featured: boolean;
+};
+
+const escapeHtml = (value: unknown): string =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const stripTags = (value: unknown): string =>
+  String(value ?? '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const normalizeCopy = (value: unknown): string =>
+  stripTags(value)
+    .replace(/\s+([,.!?;:])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const truncateCopy = (value: string, maxLength: number): string => {
+  const clean = normalizeCopy(value);
+  if (clean.length <= maxLength) return clean;
+  const next = clean.slice(0, maxLength).replace(/\s+\S*$/, '');
+  return `${next.trim()}...`;
+};
+
+const formatSentence = (value: string): string => {
+  const clean = normalizeCopy(value);
+  if (!clean) return '';
+  const sentence = clean.charAt(0).toUpperCase() + clean.slice(1);
+  return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;
+};
+
+const formatLabel = (value: string): string => {
+  const clean = normalizeCopy(value);
+  if (!clean) return '';
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
+};
+
+const formatHeading = (value: string): string => normalizeCopy(value).replace(/[.!?]+$/g, '').trim();
+
+const isGenericPlannedCopy = (value: string): boolean =>
+  /(our story|our menu|our [a-z]+\s+kitchen|reservations?$|reserve( your)? table|book( your)? table|order( online| now| takeout)?|visit( us)?|dine with us|contact us|welcome to|indulge in|unforgettable|crafted with love|experience the|join us for)/i.test(
+    normalizeCopy(value)
+  );
+
+const preferPlannedCopy = (plannedValue: string | undefined, fallbackValue: string, allowGeneric = false): string => {
+  const clean = normalizeCopy(plannedValue);
+  if (!clean) return fallbackValue;
+  if (!allowGeneric && isGenericPlannedCopy(clean)) return fallbackValue;
+  return clean;
+};
+
+const normalizePlanList = (value: unknown, maxItems = 4, maxLength = 90): string[] =>
+  Array.isArray(value)
+    ? dedupeStrings(
+        value
+          .map((entry) => truncateCopy(normalizeCopy(entry), maxLength))
+          .filter(Boolean)
+          .slice(0, maxItems)
+      )
+    : [];
+
+export const normalizeGenerationContentPlan = (value: unknown): GenerationContentPlan => {
+  const plan = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  const menuItemDescriptions = Array.isArray(plan.menuItemDescriptions)
+    ? plan.menuItemDescriptions
+        .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+        .map((entry) => ({
+          name: formatLabel(truncateCopy(normalizeCopy(entry.name), 80)),
+          description: formatSentence(truncateCopy(normalizeCopy(entry.description), 170)),
+        }))
+        .filter((entry) => entry.name && entry.description)
+        .slice(0, 14)
+    : [];
+
+  return {
+    heroSupport: formatSentence(truncateCopy(normalizeCopy(plan.heroSupport), 170)),
+    heroHighlights: normalizePlanList(plan.heroHighlights, 4, 80),
+    storyHeading: formatHeading(truncateCopy(normalizeCopy(plan.storyHeading), 90)),
+    storyBody: formatSentence(truncateCopy(normalizeCopy(plan.storyBody), 340)),
+    storyFacts: normalizePlanList(plan.storyFacts, 4, 80),
+    menuHeading: formatHeading(truncateCopy(normalizeCopy(plan.menuHeading), 110)),
+    menuIntro: formatSentence(truncateCopy(normalizeCopy(plan.menuIntro), 260)),
+    menuItemDescriptions,
+    experienceHeading: formatHeading(truncateCopy(normalizeCopy(plan.experienceHeading), 100)),
+    experienceBody: formatSentence(truncateCopy(normalizeCopy(plan.experienceBody), 300)),
+    reserveHeading: formatHeading(truncateCopy(normalizeCopy(plan.reserveHeading), 100)),
+    reserveBody: formatSentence(truncateCopy(normalizeCopy(plan.reserveBody), 260)),
+    orderHeading: formatHeading(truncateCopy(normalizeCopy(plan.orderHeading), 100)),
+    orderBody: formatSentence(truncateCopy(normalizeCopy(plan.orderBody), 240)),
+    visitHeading: formatHeading(truncateCopy(normalizeCopy(plan.visitHeading), 100)),
+    visitBody: formatSentence(truncateCopy(normalizeCopy(plan.visitBody), 260)),
+    footerTagline: formatSentence(truncateCopy(normalizeCopy(plan.footerTagline), 180)),
+  };
+};
+
+export const parseGenerationContentPlan = (raw: string): GenerationContentPlan => {
+  const source = String(raw || '').trim();
+  if (!source) return {};
+
+  const withoutFences = source.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+  const candidateStrings = [withoutFences];
+  const objectMatch = withoutFences.match(/\{[\s\S]*\}/);
+  if (objectMatch?.[0] && objectMatch[0] !== withoutFences) {
+    candidateStrings.push(objectMatch[0]);
+  }
+
+  for (const candidate of candidateStrings) {
+    try {
+      return normalizeGenerationContentPlan(JSON.parse(candidate));
+    } catch (_error) {
+      continue;
+    }
+  }
+
+  return {};
+};
+
+const slugify = (value: string): string =>
+  normalizeCopy(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'item';
+
+const safeHref = (value: unknown, fallback = '#'): string => {
+  const href = String(value ?? '').trim();
+  if (!href) return fallback;
+  if (/^(https?:|mailto:|tel:|#)/i.test(href)) return escapeHtml(href);
+  return fallback;
+};
+
+const dedupeStrings = (items: Array<string | undefined | null>): string[] => {
+  const seen = new Set<string>();
+  return items
+    .map((item) => normalizeCopy(item))
+    .filter(Boolean)
+    .filter((item) => {
+      const key = item.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
+const formatProviderLabel = (value?: string): string => {
+  const provider = normalizeCopy(value);
+  if (!provider) return '';
+  const lower = provider.toLowerCase();
+  if (lower === 'opentable') return 'OpenTable';
+  if (lower === 'ubereats') return 'Uber Eats';
+  if (lower === 'doordash') return 'DoorDash';
+  if (lower === 'resy') return 'Resy';
+  if (lower === 'toast') return 'Toast';
+  if (lower === 'square') return 'Square';
+  return provider.charAt(0).toUpperCase() + provider.slice(1);
+};
+
+const formatSocialHref = (platform: 'instagram' | 'tiktok', value?: string): string => {
+  const clean = normalizeCopy(value);
+  if (!clean) return '';
+  if (/^https?:\/\//i.test(clean)) return clean;
+  if (platform === 'instagram') return `https://instagram.com/${clean.replace(/^@/, '')}`;
+  return `https://tiktok.com/@${clean.replace(/^@/, '')}`;
+};
+
+const isLikelyCategoryHeading = (line: string): boolean => {
+  if (!line) return false;
+  if (/\$\s*\d/.test(line)) return false;
+  if (line.length > 32) return false;
+  if (/[.!?]/.test(line)) return false;
+  const words = line.split(/\s+/).filter(Boolean);
+  if (!words.length || words.length > 4) return false;
+  return words.every((word) => /^[A-Z][A-Za-z&'/-]*$/.test(word) || /^[A-Z]{2,}$/.test(word));
+};
+
+const parseMenuSourceText = (rawText?: string): GenerationMenuItem[] => {
+  const source = String(rawText || '').replace(/\r/g, '\n');
+  if (!source.trim()) return [];
+
+  const lines = source
+    .split('\n')
+    .map((line) => normalizeCopy(line.replace(/^[•*\-]+\s*/, '')))
+    .filter(Boolean);
+
+  const parsed: GenerationMenuItem[] = [];
+  let currentCategory = 'Featured';
+
+  for (const line of lines) {
+    if (isLikelyCategoryHeading(line)) {
+      currentCategory = line;
+      continue;
+    }
+
+    const priceMatch = line.match(/^(.*?)(?:\s+[-–|]\s+|\s{2,})?(\$?\d+(?:\.\d{1,2})?)$/);
+    if (priceMatch) {
+      const name = normalizeCopy(priceMatch[1]);
+      const price = formatMenuPrice(priceMatch[2]);
+      if (name) {
+        parsed.push({
+          name,
+          price,
+          displayPrice: price,
+          description: '',
+          category: currentCategory,
+          dietary: [],
+        });
+      }
+      continue;
+    }
+
+    const lastItem = parsed[parsed.length - 1];
+    if (lastItem && !lastItem.description) {
+      lastItem.description = line;
+      continue;
+    }
+
+    if (line.length <= 56) {
+      parsed.push({
+        name: line,
+        price: '',
+        displayPrice: '',
+        description: '',
+        category: currentCategory,
+        dietary: [],
+      });
+    }
+  }
+
+  return parsed.filter((item) => normalizeCopy(item.name));
+};
+
+const getMenuDescriptionOverride = (payload: GenerationPayload, itemName: string): string => {
+  const plan = normalizeGenerationContentPlan(payload.contentPlan);
+  const key = normalizeCopy(itemName).toLowerCase();
+  const match = (plan.menuItemDescriptions || []).find((entry) => normalizeCopy(entry.name).toLowerCase() === key);
+  return formatSentence(match?.description || '');
+};
+
+const buildMenuDescription = (
+  payload: GenerationPayload,
+  item: { name?: string; description?: string; category?: string; dietary?: string[] },
+  cuisineType?: string
+): string => {
+  const override = item.name ? getMenuDescriptionOverride(payload, item.name) : '';
+  if (override) return override;
+
+  const base = formatSentence(item.description || '');
+  if (base) return base;
+
+  const parts = dedupeStrings([
+    item.category ? `${formatLabel(item.category)} favorite` : '',
+    Array.isArray(item.dietary) && item.dietary.length ? `${item.dietary.join(' and ')} option` : '',
+    cuisineType ? `${normalizeCopy(cuisineType)} staple` : '',
+  ]);
+
+  return formatSentence(parts.slice(0, 2).join(', '));
+};
+
+const buildCuratedMenuItems = (payload: GenerationPayload): CuratedMenuItem[] => {
+  const structuredItems = (payload.menu || []).map((item) => ({
+    name: normalizeCopy(item.name),
+    description: buildMenuDescription(payload, item, payload.cuisineType),
+    price: formatMenuPrice(item.displayPrice ?? item.price),
+    category: normalizeCopy(item.category) || 'Featured',
+    dietary: Array.isArray(item.dietary) ? item.dietary.map((entry) => normalizeCopy(entry)).filter(Boolean) : [],
+  }));
+
+  const parsedItems = parseMenuSourceText(payload.menuSourceText).map((item) => ({
+    name: normalizeCopy(item.name),
+    description: buildMenuDescription(payload, item, payload.cuisineType),
+    price: formatMenuPrice(item.displayPrice ?? item.price),
+    category: normalizeCopy(item.category) || 'Featured',
+    dietary: Array.isArray(item.dietary) ? item.dietary.map((entry) => normalizeCopy(entry)).filter(Boolean) : [],
+  }));
+
+  const featuredSet = new Set((payload.signatureDishes || []).map((dish) => normalizeCopy(dish).toLowerCase()));
+  const seen = new Set<string>();
+
+  return [...structuredItems, ...parsedItems]
+    .filter((item) => item.name)
+    .filter((item) => {
+      const key = `${item.name.toLowerCase()}|${item.category.toLowerCase()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((item, index) => ({
+      ...item,
+      description: item.description || '',
+      featured: featuredSet.has(item.name.toLowerCase()) || index < 3,
+    }))
+    .slice(0, 14);
 };
 
 type LayoutVariant = 'editorial-luxe' | 'modern-minimal' | 'warm-neighborhood' | 'bold-upscale';
@@ -567,11 +909,11 @@ const getDesignSystem = (payload: GenerationPayload): DesignSystem => {
     nav: {
       shell:
         navPattern === 'floating-glass'
-          ? `background:rgba(255,255,255,0.78); backdrop-filter: blur(16px); border:1px solid ${palette.border}; box-shadow:${variant === 'editorial-luxe' ? '0 18px 40px -28px rgba(15,23,42,0.24)' : '0 14px 36px -28px rgba(15,23,42,0.18)'};`
+          ? `background:rgba(22,19,17,0.58); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border:1px solid rgba(255,255,255,0.14); box-shadow:${variant === 'editorial-luxe' ? '0 18px 40px -28px rgba(15,23,42,0.42)' : '0 14px 36px -28px rgba(15,23,42,0.34)'};`
           : navPattern === 'solid-bar'
-            ? `background:${palette.surface}; border:1px solid ${palette.border};`
-            : 'background:transparent;',
-      link: `color:${palette.ink};`,
+            ? `background:rgba(22,19,17,0.72); border:1px solid rgba(255,255,255,0.14);`
+            : 'background:rgba(22,19,17,0.52); border:1px solid rgba(255,255,255,0.12); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);',
+      link: 'color:rgba(255,255,255,0.94);',
     },
     hero: {
       variant: heroVariant,
@@ -755,6 +1097,18 @@ const ensureTailwindCdn = (html: string): string => {
   return next.replace(/<html[^>]*>/i, (match) => `${match}\n<head>\n  ${cdnTag}\n</head>`);
 };
 
+const stripManagedAssets = (html: string): string =>
+  html
+    .replace(/<style[^>]*data-synthr-safety[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*data-synthr-scroll[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<script[^>]+src=["']https?:\/\/cdn\.tailwindcss\.com["'][^>]*><\/script>\s*/gi, '')
+    .replace(/<link[^>]+href=["']https?:\/\/cdn\.jsdelivr\.net\/npm\/tailwindcss[^"']*["'][^>]*>\s*/gi, '')
+    .replace(/<link[^>]+href=["']https?:\/\/fonts\.googleapis\.com\/css2\?[^"']*["'][^>]*>\s*/gi, '')
+    .replace(/<link[^>]+href=["']https?:\/\/fonts\.googleapis\.com["'][^>]*>\s*/gi, '')
+    .replace(/<link[^>]+href=["']https?:\/\/fonts\.gstatic\.com["'][^>]*>\s*/gi, '')
+    .replace(/<link[^>]+rel=["']preconnect["'][^>]+fonts\.googleapis\.com[^>]*>\s*/gi, '')
+    .replace(/<link[^>]+rel=["']preconnect["'][^>]+fonts\.gstatic\.com[^>]*>\s*/gi, '');
+
 const ensureSeoMeta = (html: string, payload: GenerationPayload): string => {
   const name = payload.name || 'Restaurant';
   const cuisine = payload.cuisineType || 'Restaurant';
@@ -839,33 +1193,81 @@ const ensureDesignSafetyStyles = (html: string, style?: string, cuisineType?: st
       overflow-x: hidden;
       -webkit-font-smoothing: antialiased;
       text-rendering: optimizeLegibility;
+      line-height: 1.6;
     }
     h1, h2, h3, h4, h5, h6 { font-family: ${design.typography.headingFamily}; letter-spacing: -0.03em; line-height: 0.98; }
     h1 { font-size: var(--synthr-hero-size); }
     h2 { font-size: var(--synthr-heading-size); }
     p, li, span, label, small { color: inherit; }
     img, video { max-width: 100%; height: auto; }
+    img { display: block; }
     input, select, textarea, button { font: inherit; }
-    a, button { max-width: 100%; }
+    input, select, textarea { width: 100%; min-height: 3.25rem; }
+    a, button { max-width: 100%; text-underline-offset: 0.16em; }
     :focus-visible { outline: 2px solid var(--synthr-accent); outline-offset: 3px; }
     main, section, header, footer, nav { width: 100%; }
     section, header, footer { position: relative; }
     nav { flex-wrap: wrap; row-gap: 0.5rem; }
     a:not([class*="bg-"]) { color: var(--synthr-accent); text-decoration-color: color-mix(in srgb, var(--synthr-accent) 35%, transparent); }
+    [data-synthr-nav] {
+      position: sticky;
+      top: 1rem;
+      z-index: 40;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      background: rgba(20, 16, 15, 0.6);
+      border: 1px solid rgba(255,255,255,0.14);
+      box-shadow: 0 16px 40px -30px rgba(15, 23, 42, 0.32);
+      color: rgba(255,255,255,0.94);
+      transition: background 180ms ease, box-shadow 180ms ease, border-color 180ms ease, transform 180ms ease;
+    }
+    [data-synthr-nav].is-scrolled {
+      background: rgba(20, 16, 15, 0.82);
+      border-color: rgba(255,255,255,0.16);
+      box-shadow: 0 24px 48px -30px rgba(15, 23, 42, 0.42);
+    }
+    [data-synthr-nav] a:not(.synthr-button-primary):not(.synthr-button-secondary) {
+      color: rgba(255,255,255,0.92);
+      text-decoration-color: transparent;
+    }
+    [data-synthr-nav] a:not(.synthr-button-primary):not(.synthr-button-secondary):hover {
+      opacity: 0.72;
+    }
+    [data-synthr-nav] .synthr-button-primary {
+      background: rgba(255,255,255,0.96);
+      color: var(--synthr-footer);
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: 0 18px 30px -24px rgba(15, 23, 42, 0.42);
+    }
+    [data-synthr-nav] .synthr-button-primary:hover {
+      background: white;
+      color: var(--synthr-footer);
+    }
     button, [role="button"], a[class*="bg-"], a[class*="inline-flex"] { transition: transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease; }
     button:hover, [role="button"]:hover, a[class*="bg-"]:hover, a[class*="inline-flex"]:hover { transform: translateY(-1px); }
     .synthr-surface { background: var(--synthr-surface); border: 1px solid var(--synthr-border); box-shadow: var(--synthr-shadow-soft); border-radius: var(--synthr-radius-panel); }
     .synthr-surface-alt { background: var(--synthr-surface-alt); border: 1px solid var(--synthr-border); border-radius: var(--synthr-radius-panel); }
     .synthr-divider { border-color: var(--synthr-border); }
-    .synthr-eyebrow { letter-spacing: 0.32em; text-transform: uppercase; color: var(--synthr-muted); font-size: 0.76rem; }
+    .synthr-eyebrow { letter-spacing: 0.32em; text-transform: uppercase; color: var(--synthr-muted); font-size: 0.76rem; font-weight: 700; }
+    .synthr-button-primary, .synthr-button-secondary { min-height: 3rem; padding-inline: 1.5rem; font-weight: 600; }
     .synthr-button-primary { background: var(--synthr-accent-strong); color: white; border-radius: var(--synthr-radius-button); box-shadow: var(--synthr-shadow-soft); }
-    .synthr-button-secondary { background: transparent; color: var(--synthr-ink); border: 1px solid var(--synthr-border); border-radius: var(--synthr-radius-button); }
+    .synthr-button-primary:hover { box-shadow: var(--synthr-shadow-card); }
+    .synthr-button-secondary { background: var(--synthr-surface); color: var(--synthr-ink) !important; border: 1px solid var(--synthr-border); border-radius: var(--synthr-radius-button); box-shadow: 0 12px 26px -24px rgba(15, 23, 42, 0.18); }
+    .synthr-button-secondary:hover { background: color-mix(in srgb, var(--synthr-accent-soft) 18%, white); color: var(--synthr-ink) !important; }
     .synthr-media { border-radius: var(--synthr-radius-media); overflow: hidden; box-shadow: var(--synthr-shadow-card); }
     .synthr-dark-surface, footer { color: rgba(255,255,255,0.92); }
     .synthr-dark-surface a, footer a { color: white; }
+    .synthr-dark-surface .synthr-button-secondary, footer .synthr-button-secondary {
+      background: rgba(255,255,255,0.1);
+      color: white;
+      border-color: rgba(255,255,255,0.16);
+    }
+    .synthr-dark-surface .synthr-eyebrow, footer .synthr-eyebrow { color: rgba(255,255,255,0.64); }
     @media (max-width: 768px) {
       h1 { line-height: 1.02; }
       body { background-size: 180% auto; }
+      .synthr-button-primary, .synthr-button-secondary { width: 100%; justify-content: center; }
+      [data-synthr-nav] { top: 0.75rem; }
     }
   </style>`;
 
@@ -880,6 +1282,7 @@ const ensureSmoothScrollScript = (html: string): string => {
   const script = `
   <script data-synthr-scroll>
     (function () {
+      const nav = document.querySelector('[data-synthr-nav]');
       const aliasMap = [
         { pattern: /(home|top|start)/i, target: '#home' },
         { pattern: /(about|story)/i, target: '#about' },
@@ -905,6 +1308,11 @@ const ensureSmoothScrollScript = (html: string): string => {
         return '#home';
       };
 
+      const syncNavState = () => {
+        if (!nav) return;
+        nav.classList.toggle('is-scrolled', window.scrollY > 18);
+      };
+
       const syncLink = (link) => {
         const href = link.getAttribute('href') || '';
         const target = normalizeTarget(href, link.textContent || '');
@@ -914,6 +1322,8 @@ const ensureSmoothScrollScript = (html: string): string => {
       };
 
       document.querySelectorAll('a[href]').forEach(syncLink);
+      syncNavState();
+      window.addEventListener('scroll', syncNavState, { passive: true });
 
       document.addEventListener('click', (event) => {
         const link = event.target && event.target.closest ? event.target.closest('a[href]') : null;
@@ -933,59 +1343,6 @@ const ensureSmoothScrollScript = (html: string): string => {
           }
         }
       }, true);
-
-      const luminance = (value) => {
-        const channel = value / 255;
-        return channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
-      };
-
-      const parseColor = (value) => {
-        if (!value) return null;
-        const match = value.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/i);
-        if (!match) return null;
-        return [Number(match[1]), Number(match[2]), Number(match[3])];
-      };
-
-      const findBackground = (element) => {
-        let current = element;
-        while (current && current !== document.body) {
-          const styles = window.getComputedStyle(current);
-          const color = parseColor(styles.backgroundColor);
-          if (color && styles.backgroundColor !== 'rgba(0, 0, 0, 0)' && styles.backgroundColor !== 'transparent') {
-            return color;
-          }
-          current = current.parentElement;
-        }
-        return [248, 250, 252];
-      };
-
-      const fixContrast = () => {
-        const nodes = document.querySelectorAll('h1, h2, h3, h4, h5, h6, p, span, li, a, small, strong, em, label, button');
-        nodes.forEach((node) => {
-          if (node.closest('[style*="background-image"]')) return;
-          const styles = window.getComputedStyle(node);
-          const textColor = parseColor(styles.color);
-          const backgroundColor = findBackground(node);
-          if (!textColor || !backgroundColor) return;
-
-          const textLum = 0.2126 * luminance(textColor[0]) + 0.7152 * luminance(textColor[1]) + 0.0722 * luminance(textColor[2]);
-          const bgLum = 0.2126 * luminance(backgroundColor[0]) + 0.7152 * luminance(backgroundColor[1]) + 0.0722 * luminance(backgroundColor[2]);
-          const contrast = (Math.max(textLum, bgLum) + 0.05) / (Math.min(textLum, bgLum) + 0.05);
-
-          if (contrast < 3.8) {
-            const backgroundIsLight = bgLum > 0.55;
-            node.style.setProperty('color', backgroundIsLight ? '#0f172a' : '#f8fafc', 'important');
-            node.style.setProperty('text-shadow', backgroundIsLight ? 'none' : '0 2px 16px rgba(15,23,42,0.55)', 'important');
-          }
-        });
-      };
-
-      if (document.readyState === 'complete') {
-        fixContrast();
-      } else {
-        window.addEventListener('load', fixContrast, { once: true });
-      }
-      window.setTimeout(fixContrast, 120);
     })();
   </script>`;
 
@@ -1131,159 +1488,198 @@ const injectFallbackGallery = (html: string, assets: ImageAsset[]): string => {
   return `${html}\n${gallery}`;
 };
 
+const buildHeroSupport = (payload: GenerationPayload, name: string, cuisineType: string): string => {
+  const candidates = dedupeStrings([
+    payload.tagline && normalizeCopy(payload.tagline).toLowerCase() !== name.toLowerCase() ? payload.tagline : '',
+    payload.brand?.summary,
+    payload.shortDescription,
+    payload.description,
+    payload.brand?.atmosphere && cuisineType
+      ? `${payload.brand.atmosphere}. ${cuisineType} cooking with a more deliberate pace.`
+      : '',
+  ]);
+
+  return formatSentence(truncateCopy(candidates[0] || `${name} is a restaurant with clear atmosphere, strong food, and an easy next step for guests.`, 170));
+};
+
+const buildStoryCopy = (payload: GenerationPayload, summary: string): string => {
+  const candidates = dedupeStrings([
+    payload.fullStory,
+    payload.brand?.story,
+    payload.brand?.atmosphere && payload.brand?.audience
+      ? `${payload.brand.atmosphere}. A room made for ${payload.brand.audience}.`
+      : '',
+    summary,
+  ]);
+
+  return formatSentence(truncateCopy(candidates[0] || summary, 340));
+};
+
+const buildSectionSequence = (payload: GenerationPayload, options: { showExperience: boolean; showOrder: boolean; showReserve: boolean }) => {
+  const sequence = ['about', 'menu'];
+
+  if (options.showExperience) sequence.push('experience');
+  if (payload.primaryCta === 'online-orders' && options.showOrder) sequence.push('order');
+  if (options.showReserve) sequence.push('reserve');
+  if (payload.primaryCta !== 'online-orders' && options.showOrder) sequence.push('order');
+  sequence.push('hours');
+
+  return sequence;
+};
+
 const buildSections = (payload: GenerationPayload) => {
-  const {
-    name = 'Restaurant',
-    cuisineType = 'Restaurant',
-    priceRange = '$$',
-    city = '',
-    address = '',
-    phone = '',
-    email = '',
-    tagline,
-    hours,
-    description,
-    brand,
-    menu,
-    onlineOrdering,
-    reservations,
-    googleMapsLink,
-    parking,
-    neighborhood,
-    socialLinks,
-    hostEvents,
-    weeklySpecials,
-    cateringAvailable,
-    cateringEmail,
-    privateEventCapacity,
-    shortDescription,
-    fullStory,
-    yearFounded,
-    founderName,
-    images,
-    useStockImages,
-    style,
-  } = payload;
-
-  const menuByCategory: Record<string, GenerationPayload['menu']> = {};
-  (menu || []).forEach((item) => {
-    const category = item?.category || 'Featured';
-    if (!menuByCategory[category]) menuByCategory[category] = [];
-    menuByCategory[category]?.push(item);
-  });
-
-  const menuHTML = Object.entries(menuByCategory)
-    .map(
-      ([category, items]) => `
-      <div class="bg-slate-50 rounded-2xl p-6 shadow-lg">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-xl font-semibold text-slate-900">${category}</h3>
-        </div>
-        <div class="grid gap-4">
-          ${(items || [])
-            .map(
-              (item) => `
-            <div class="flex items-start justify-between gap-4 bg-white rounded-xl p-4 shadow">
-              <div class="flex-1">
-                <h4 class="text-base font-semibold text-slate-900">${item?.name || ''}</h4>
-                <p class="text-slate-600 text-sm mt-1">${item?.description || ''}</p>
-              </div>
-              <span class="text-base font-semibold text-amber-600">${formatMenuPrice(item?.displayPrice ?? item?.price)}</span>
-            </div>
-          `
-            )
-            .join('')}
-        </div>
-      </div>`
+  const contentPlan = normalizeGenerationContentPlan(payload.contentPlan);
+  const name = normalizeCopy(payload.name) || 'Restaurant';
+  const cuisineType = normalizeCopy(payload.cuisineType) || 'Restaurant';
+  const priceRange = normalizeCopy(payload.priceRange) || '$$';
+  const city = normalizeCopy(payload.city);
+  const address = normalizeCopy(payload.address);
+  const phone = normalizeCopy(payload.phone);
+  const email = normalizeCopy(payload.email);
+  const neighborhood = normalizeCopy(payload.advanced?.neighborhood || payload.neighborhood);
+  const parking = normalizeCopy(payload.advanced?.parking || payload.parking);
+  const awards = dedupeStrings(payload.advanced?.awards || []);
+  const dietaryAccommodations = dedupeStrings(payload.advanced?.dietaryAccommodations || []);
+  const summary = formatSentence(
+    truncateCopy(
+      normalizeCopy(payload.brand?.summary || payload.shortDescription || payload.description) ||
+        `A ${cuisineType.toLowerCase()} restaurant serving guests in ${city || 'the neighborhood'}.`,
+      180
     )
-    .join('');
+  );
+  const story = preferPlannedCopy(contentPlan.storyBody, buildStoryCopy(payload, summary));
+  const heroSupport = preferPlannedCopy(contentPlan.heroSupport, buildHeroSupport(payload, name, cuisineType));
+  const imageAssets = buildImageAssets(payload.images, payload.useStockImages !== false, payload.cuisineType, payload.name, payload.style);
+  const curatedMenu = buildCuratedMenuItems(payload);
+  const menuByCategory = curatedMenu.reduce<Record<string, CuratedMenuItem[]>>((acc, item) => {
+    if (!acc[item.category]) acc[item.category] = [];
+    acc[item.category].push(item);
+    return acc;
+  }, {});
+  const featuredMenu = curatedMenu.filter((item) => item.featured).slice(0, 3);
+  const heroImage = imageAssets.find((img) => img.role === 'hero') || imageAssets[0];
+  const interiorImage = imageAssets.find((img) => img.role === 'interior') || imageAssets[1] || heroImage;
+  const foodImages = imageAssets.filter((img) => ['food', 'dish', 'dessert'].includes(img.role));
+  const galleryImages = imageAssets.filter((img) => img.role !== 'logo');
+  const logo = imageAssets.find((img) => img.role === 'logo');
+  const hoursEntries = Object.entries(payload.hours || {})
+    .filter(([, value]) => normalizeCopy(value))
+    .map(([day, value]) => ({ day: escapeHtml(day), value: escapeHtml(normalizeCopy(value) || 'Closed') }));
 
-  const hoursHTML = Object.entries(hours || {})
-    .map(
-      ([day, time]) => `
-      <div class="flex justify-between items-center py-3 border-b border-slate-100 last:border-b-0">
-        <span class="font-medium text-slate-700">${day}</span>
-        <span class="text-slate-600">${time || 'Closed'}</span>
-      </div>`
+  const showOrder = Boolean(payload.onlineOrdering?.acceptOrders || payload.ordering?.enabled || payload.takeout || payload.delivery);
+  const showReserve = Boolean(payload.reservations?.acceptReservations || payload.primaryCta === 'reservations');
+  const showExperience = galleryImages.length >= 3 || story.length > 160 || Boolean(payload.hostEvents && payload.weeklySpecials);
+
+  const orderProvider =
+    formatProviderLabel(payload.onlineOrdering?.platforms?.[0]) || formatProviderLabel(payload.ordering?.provider) || '';
+  const reserveProvider = formatProviderLabel(payload.reservations?.platforms?.[0]);
+  const weeklySpecials = formatSentence(truncateCopy(normalizeCopy(payload.weeklySpecials || payload.advanced?.weeklySpecials), 220));
+
+  const socialLinks = [
+    payload.socialLinks?.instagram ? { label: 'Instagram', href: formatSocialHref('instagram', payload.socialLinks.instagram) } : null,
+    payload.socialLinks?.tiktok ? { label: 'TikTok', href: formatSocialHref('tiktok', payload.socialLinks.tiktok) } : null,
+    payload.socialLinks?.googleReviews ? { label: 'Google Reviews', href: normalizeCopy(payload.socialLinks.googleReviews) } : null,
+    payload.socialLinks?.yelp ? { label: 'Yelp', href: normalizeCopy(payload.socialLinks.yelp) } : null,
+    payload.socialLinks?.facebook ? { label: 'Facebook', href: normalizeCopy(payload.socialLinks.facebook) } : null,
+  ].filter(Boolean) as Array<{ label: string; href: string }>;
+
+  const storyFacts = dedupeStrings([
+    ...(contentPlan.storyFacts || []),
+    neighborhood ? `In ${neighborhood}` : city ? `Serving ${city}` : '',
+    payload.founderName || payload.yearFounded
+      ? `Founded${payload.founderName ? ` by ${payload.founderName}` : ''}${payload.yearFounded ? ` in ${payload.yearFounded}` : ''}`
+      : '',
+    awards[0] ? `Recognized by ${awards[0]}` : '',
+    dietaryAccommodations.length ? `${dietaryAccommodations.slice(0, 2).join(' and ')} available` : '',
+  ]).slice(0, 4);
+
+  const heroHighlights = dedupeStrings([
+    ...(contentPlan.heroHighlights || []),
+    payload.brand?.atmosphere,
+    featuredMenu[0] ? `Known for ${featuredMenu[0].name}` : '',
+    payload.brand?.audience ? `Good for ${payload.brand.audience}` : '',
+    showReserve ? `${reserveProvider || 'Reservations'} available` : '',
+  ]).slice(0, 4);
+  const orderLabel = orderProvider ? `Order on ${orderProvider}` : 'Start an order';
+  const orderSecondaryLabel = showReserve ? 'Takeout and pickup available' : 'Pickup and takeout available';
+  const reserveLabel = reserveProvider ? `Book on ${reserveProvider}` : phone ? 'Call to reserve' : 'Request a table';
+  const reserveUrl = payload.reservations?.url || (phone ? `tel:${phone.replace(/[^\d+]/g, '')}` : '');
+  const orderUrl = payload.onlineOrdering?.customURL || payload.ordering?.url || '';
+
+  const menuHeading = preferPlannedCopy(
+    contentPlan.menuHeading,
+    curatedMenu.length
+      ? `A menu shaped around ${featuredMenu[0]?.name || 'house favorites'} and dishes guests come back for`
+      : 'A concise menu with the right signatures up front'
+  );
+  const menuIntro = preferPlannedCopy(
+    contentPlan.menuIntro,
+    curatedMenu.length
+      ? `${name} keeps the menu focused on ${dedupeStrings([
+          featuredMenu[0]?.name,
+          featuredMenu[1]?.name,
+          cuisineType ? `${cuisineType.toLowerCase()} staples` : '',
+        ])
+          .slice(0, 3)
+          .join(', ')}, so the page reads like a real restaurant rather than a long list.`
+      : 'Add a few real items or paste menu text to turn this into a fuller signature-menu presentation.'
+  );
+  const storyHeadingFallback = neighborhood ? `${name} is rooted in ${neighborhood}` : 'A room built around pace, warmth, and return visits';
+  const rawStoryHeading = preferPlannedCopy(contentPlan.storyHeading, storyHeadingFallback);
+  const storyHeading = normalizeCopy(rawStoryHeading).toLowerCase() === name.toLowerCase() ? storyHeadingFallback : rawStoryHeading;
+  const experienceHeading = preferPlannedCopy(
+    contentPlan.experienceHeading,
+    weeklySpecials ? 'The room keeps people staying a little longer' : 'The space should sell the night as much as the food'
+  );
+  const experienceBody = preferPlannedCopy(
+    contentPlan.experienceBody,
+    weeklySpecials ||
+      formatSentence(
+      dedupeStrings([
+        payload.brand?.story,
+        payload.brand?.atmosphere,
+        payload.brand?.audience ? `Designed for ${payload.brand.audience}` : '',
+        summary,
+      ]).join('. ')
     )
-    .join('');
-
-  let orderingSection = '';
-  if (onlineOrdering?.acceptOrders) {
-    const platformNames = (onlineOrdering.platforms || [])
-      .map((platform) => {
-        if (platform === 'doordash') return 'DoorDash';
-        if (platform === 'ubereats') return 'Uber Eats';
-        return platform.charAt(0).toUpperCase() + platform.slice(1);
-      })
-      .join(', ');
-    orderingSection = `
-      <div class="p-8 bg-amber-50 rounded-2xl shadow-lg">
-        <h3 class="text-2xl font-bold text-slate-900 mb-3">Order Online</h3>
-        <p class="text-slate-600 mb-6">${platformNames ? `Available on ${platformNames}.` : 'Order online directly from the restaurant.'}</p>
-        <a href="${onlineOrdering.customURL || '#order'}" class="inline-block px-6 py-3 bg-orange-600 text-white font-semibold rounded-xl hover:bg-orange-700">Order Now</a>
-      </div>`;
-  }
-
-  let reservationsSection = '';
-  if (reservations?.acceptReservations) {
-    const platformNames = (reservations.platforms || []).map((platform) => platform.charAt(0).toUpperCase() + platform.slice(1)).join(', ');
-    reservationsSection = `
-      <div class="p-8 bg-slate-100 rounded-2xl shadow-lg">
-        <h3 class="text-2xl font-bold text-slate-900 mb-3">Reserve a Table</h3>
-        <p class="text-slate-600 mb-6">${platformNames ? `Book on ${platformNames}.` : 'Reserve directly with the restaurant.'}</p>
-        <a href="${reservations.url || '#reserve'}" class="inline-block px-6 py-3 bg-amber-600 text-white font-semibold rounded-xl hover:bg-amber-700">Reserve Now</a>
-      </div>`;
-  }
-
-  const aboutSection = fullStory
-    ? `
-      <section id="about" class="py-16 bg-white">
-        <div class="max-w-4xl mx-auto px-4">
-          <h2 class="text-3xl font-bold text-slate-900 mb-6">Our Story</h2>
-          <p class="text-slate-700 text-lg leading-relaxed mb-4">${fullStory}</p>
-          ${founderName ? `<p class="text-slate-600">Founded by ${founderName}${yearFounded ? ` in ${yearFounded}` : ''}</p>` : ''}
-        </div>
-      </section>`
-    : '';
-
-  const cateringSection = cateringAvailable
-    ? `
-      <section id="events" class="py-16 bg-slate-50">
-        <div class="max-w-4xl mx-auto px-4">
-          <h2 class="text-3xl font-bold text-slate-900 mb-6">Catering & Private Events</h2>
-          <p class="text-slate-700 text-lg mb-6">Host your event at ${name}. We can accommodate ${privateEventCapacity || 'up to 60'} guests.</p>
-          <a href="mailto:${cateringEmail || email}" class="inline-block px-6 py-3 bg-orange-600 text-white font-semibold rounded-xl hover:bg-orange-700">Inquire Now</a>
-        </div>
-      </section>`
-    : '';
-
-  const eventsSection = hostEvents && weeklySpecials
-    ? `
-      <section id="experience" class="py-16 bg-amber-50">
-        <div class="max-w-4xl mx-auto px-4">
-          <h2 class="text-3xl font-bold text-slate-900 mb-6">Events & Specials</h2>
-          <p class="text-slate-700 text-lg whitespace-pre-line">${weeklySpecials}</p>
-        </div>
-      </section>`
-    : '';
-
-  const socialHTML =
-    socialLinks && Object.values(socialLinks).some(Boolean)
-      ? `
-      <div class="flex gap-4 justify-center mt-6">
-        ${socialLinks.instagram ? `<a href="https://instagram.com/${socialLinks.instagram}" class="text-orange-600 hover:text-orange-700 font-semibold">Instagram</a>` : ''}
-        ${socialLinks.tiktok ? `<a href="https://tiktok.com/@${socialLinks.tiktok}" class="text-orange-600 hover:text-orange-700 font-semibold">TikTok</a>` : ''}
-        ${socialLinks.yelp ? `<a href="${socialLinks.yelp}" class="text-orange-600 hover:text-orange-700 font-semibold">Yelp</a>` : ''}
-        ${socialLinks.googleReviews ? `<a href="${socialLinks.googleReviews}" class="text-orange-600 hover:text-orange-700 font-semibold">Google Reviews</a>` : ''}
-      </div>`
-      : '';
-
-  const imageAssets = buildImageAssets(images, useStockImages !== false, cuisineType, name, style);
-  const summary =
-    shortDescription || description || brand?.summary || `A welcoming ${cuisineType.toLowerCase()} restaurant serving guests in ${city || 'your neighborhood'}.`;
+  );
+  const reserveHeading = preferPlannedCopy(
+    contentPlan.reserveHeading,
+    showReserve ? 'Reserve ahead for the smoothest table and the best pace to the evening' : 'Make the next step feel easy before guests commit'
+  );
+  const reserveBody = preferPlannedCopy(
+    contentPlan.reserveBody,
+    showReserve
+      ? `Booking is straightforward here, with one clear path to a confirmed table and the essentials close by.`
+      : `If reservations are handled manually today, keep the call or email path clear, direct, and easy to trust.`
+  );
+  const orderHeading = preferPlannedCopy(
+    contentPlan.orderHeading,
+    showReserve ? 'Takeout and pickup should feel like part of the brand, not an afterthought' : 'Ordering should start with the same confidence as walking in'
+  );
+  const orderBody = preferPlannedCopy(
+    contentPlan.orderBody,
+    showOrder
+      ? `${orderLabel} keeps ordering direct while the rest of the page still does the work of selling the menu.`
+      : 'When online ordering is not connected yet, use this space to point people to the next best action without clutter.'
+  );
+  const visitHeadingFallback = 'Hours, location, and the details people check before they commit';
+  const rawVisitHeading = preferPlannedCopy(contentPlan.visitHeading, visitHeadingFallback);
+  const visitHeading = normalizeCopy(rawVisitHeading).toLowerCase() === name.toLowerCase() ? visitHeadingFallback : rawVisitHeading;
+  const visitBody = preferPlannedCopy(
+    contentPlan.visitBody,
+    dedupeStrings([
+      address ? `${address}${city ? `, ${city}` : ''}` : '',
+      neighborhood ? `In ${neighborhood}` : '',
+      parking ? `Parking: ${parking}` : '',
+    ]).join('. ') ||
+      'Keep the practical information clean, readable, and close to the final CTA.',
+    true
+  );
+  const footerTagline = preferPlannedCopy(contentPlan.footerTagline, summary, true);
 
   return {
+    contentPlan,
     name,
     cuisineType,
     priceRange,
@@ -1291,26 +1687,58 @@ const buildSections = (payload: GenerationPayload) => {
     address,
     phone,
     email,
-    tagline: tagline || `${name} serves ${cuisineType.toLowerCase()} food with warmth and care.`,
+    summary,
+    story,
     neighborhood,
     parking,
-    menuHTML,
-    hoursHTML,
-    orderingSection,
-    reservationsSection,
-    aboutSection,
-    cateringSection,
-    eventsSection,
-    socialHTML,
-    summary,
-    googleMapsLink,
+    awards,
+    dietaryAccommodations,
+    heroSupport,
+    heroEyebrow: dedupeStrings([cuisineType, priceRange, city]).join(' · '),
+    heroHighlights,
+    menuByCategory: Object.entries(menuByCategory),
+    featuredMenu,
+    curatedMenu,
+    hoursEntries,
+    socialLinks,
     imageAssets,
+    heroImage,
+    interiorImage,
+    foodImages,
+    galleryImages,
+    logo,
+    showOrder,
+    showReserve,
+    showExperience,
+    orderLabel,
+    orderSecondaryLabel,
+    orderUrl,
+    reserveLabel,
+    reserveUrl,
+    googleMapsLink: normalizeCopy(payload.googleMapsLink),
+    weeklySpecials,
+    storyFacts,
+    sectionOrder: buildSectionSequence(payload, { showExperience, showOrder, showReserve }),
+    eventsEmail: normalizeCopy(payload.cateringEmail || payload.advanced?.cateringEmail || email),
+    privateEventCapacity: payload.privateEventCapacity || payload.advanced?.privateEventCapacity,
+    storyHeading,
+    menuHeading,
+    menuIntro,
+    experienceHeading,
+    experienceBody,
+    reserveHeading,
+    reserveBody,
+    orderHeading,
+    orderBody,
+    visitHeading,
+    visitBody,
+    footerTagline,
   };
 };
 
 const buildFallbackHtml = (payload: GenerationPayload): string => {
-  const sections = buildSections(payload);
   const design = getDesignSystem(payload);
+  const sections = buildSections(payload);
   const {
     name,
     cuisineType,
@@ -1319,369 +1747,346 @@ const buildFallbackHtml = (payload: GenerationPayload): string => {
     address,
     phone,
     email,
-    tagline,
+    summary,
+    story,
     neighborhood,
     parking,
-    summary,
+    awards,
+    dietaryAccommodations,
+    heroSupport,
+    heroEyebrow,
+    heroHighlights,
+    menuByCategory,
+    featuredMenu,
+    curatedMenu,
+    hoursEntries,
+    socialLinks,
+    heroImage,
+    interiorImage,
+    foodImages,
+    galleryImages,
+    logo,
+    showOrder,
+    showReserve,
+    showExperience,
+    orderLabel,
+    orderSecondaryLabel,
+    orderUrl,
+    reserveLabel,
+    reserveUrl,
     googleMapsLink,
-    imageAssets,
+    weeklySpecials,
+    storyFacts,
+    sectionOrder,
+    eventsEmail,
+    privateEventCapacity,
+    storyHeading,
+    menuHeading,
+    menuIntro,
+    experienceHeading,
+    experienceBody,
+    reserveHeading,
+    reserveBody,
+    orderHeading,
+    orderBody,
+    visitHeading,
+    visitBody,
+    footerTagline,
   } = sections;
 
-  const menuItems = (payload.menu || []).filter((item) => item?.name);
-  const groupedMenu = menuItems.reduce<Record<string, typeof menuItems>>((acc, item) => {
-    const category = item?.category || 'Featured';
-    if (!acc[category]) acc[category] = [];
-    acc[category].push(item);
-    return acc;
-  }, {});
-
-  const heroImage = imageAssets.find((img) => img.role === 'hero') || imageAssets[0];
-  const interiorImage = imageAssets.find((img) => img.role === 'interior') || imageAssets[1] || heroImage;
-  const foodImages = imageAssets.filter((img) => img.role === 'food' || img.role === 'dish' || img.role === 'dessert');
-  const galleryImages = imageAssets.filter((img) => img.role !== 'logo').slice(0, 5);
-  const logo = imageAssets.find((img) => img.role === 'logo');
-
   const navLinks = [
-    ['#about', 'About'],
+    ['#about', 'Story'],
     ['#menu', 'Menu'],
-    ['#experience', 'Experience'],
-    ['#hours', 'Hours'],
-    ['#order', 'Order'],
-    ['#reserve', 'Reserve'],
-    ['#contact', 'Contact'],
-  ];
+    showExperience ? ['#experience', 'Atmosphere'] : null,
+    showReserve ? ['#reserve', 'Reservations'] : null,
+    ['#hours', 'Visit'],
+  ].filter(Boolean) as Array<[string, string]>;
 
-  const heroEyebrow = `${cuisineType} · ${priceRange}${city ? ` · ${city}` : ''}`;
-  const showOrder = Boolean(payload.onlineOrdering?.acceptOrders || payload.ordering?.enabled || payload.takeout || payload.delivery);
-  const showReserve = Boolean(payload.reservations?.acceptReservations);
+  const primaryHref = showReserve ? '#reserve' : showOrder ? '#order' : '#hours';
+  const primaryLabel = showReserve ? 'Reserve a table' : showOrder ? 'Order online' : 'Plan your visit';
+  const secondaryHref = showReserve && showOrder ? '#order' : '#menu';
+  const secondaryLabel = showReserve && showOrder ? 'See takeout options' : 'See the menu';
 
-  const renderPrimaryButtons = () => `
-    <div class="mt-10 flex flex-wrap gap-3">
-      ${showOrder ? `<a href="#order" class="inline-flex items-center justify-center px-6 py-3 synthr-button-primary" style="${design.cta.primary}">Order online</a>` : ''}
-      ${showReserve ? `<a href="#reserve" class="inline-flex items-center justify-center px-6 py-3 synthr-button-secondary" style="${design.cta.secondary}">Reserve a table</a>` : ''}
-      ${!showOrder && !showReserve ? `<a href="#contact" class="inline-flex items-center justify-center px-6 py-3 synthr-button-primary" style="${design.cta.primary}">Plan your visit</a>` : ''}
-    </div>`;
-
-  const renderHero = () => {
-    if (design.hero.variant === 'split-story') {
-      return `
-      <header id="home" class="${design.spacing.section}" style="${design.hero.height}">
-        <div class="max-w-7xl mx-auto ${design.spacing.container}">
-          ${renderNav()}
-          <div class="mt-12 grid items-center gap-8 lg:grid-cols-[1.05fr_0.95fr]">
-            <div style="${design.hero.contentWidth}">
-              <p class="synthr-eyebrow">${heroEyebrow}</p>
-              <h1 class="mt-5">${tagline}</h1>
-              <p class="mt-6 text-lg leading-8" style="color:${design.palette.muted}">${summary}</p>
-              ${renderPrimaryButtons()}
-            </div>
-            <div class="synthr-media" style="border-radius:${design.radius.media}">
-              ${heroImage ? `<img src="${heroImage.url}" alt="${heroImage.alt}" class="h-[36rem] w-full object-cover" />` : ''}
-            </div>
-          </div>
+  const renderNav = () => `
+    <nav data-synthr-nav class="sticky top-4 z-30 rounded-[999px] px-4 py-3 md:px-5" style="${design.nav.shell}">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <a href="#home" class="inline-flex items-center gap-3 font-semibold tracking-tight" style="${design.nav.link}">
+          ${logo ? `<img src="${escapeHtml(logo.url)}" alt="${escapeHtml(logo.alt)}" class="h-10 w-10 rounded-full object-cover" />` : ''}
+          <span>${escapeHtml(name)}</span>
+        </a>
+        <div class="flex flex-wrap items-center justify-end gap-x-5 gap-y-2 text-sm" style="${design.nav.link}">
+          ${navLinks.map(([href, label]) => `<a href="${href}" class="transition hover:opacity-65">${label}</a>`).join('')}
+          <a href="${primaryHref}" class="inline-flex items-center justify-center px-4 py-2 synthr-button-primary">${primaryLabel}</a>
         </div>
-      </header>`;
-    }
+      </div>
+    </nav>`;
 
-    if (design.hero.variant === 'reservation-card') {
-      return `
-      <header id="home" class="${design.spacing.section}" style="${design.hero.height}">
-        <div class="max-w-7xl mx-auto ${design.spacing.container}">
-          ${renderNav()}
-          <div class="mt-12 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]">
-            <div class="relative overflow-hidden synthr-media" style="min-height:34rem;border-radius:${design.radius.media};box-shadow:${design.shadows.hero}">
-              ${heroImage ? `<img src="${heroImage.url}" alt="${heroImage.alt}" class="absolute inset-0 h-full w-full object-cover" />` : ''}
-              <div class="absolute inset-0" style="background:${design.palette.heroOverlay}"></div>
-              <div class="relative z-10 flex h-full flex-col justify-end p-8 md:p-12 text-white">
-                <p class="synthr-eyebrow" style="color:rgba(255,255,255,0.72)">${heroEyebrow}</p>
-                <h1 class="mt-5" style="max-width:12ch">${tagline}</h1>
-                <p class="mt-5 max-w-2xl text-lg leading-8 text-white/82">${summary}</p>
-                ${renderPrimaryButtons()}
-              </div>
-            </div>
-            <div class="synthr-surface self-end p-6 md:p-8">
-              <p class="synthr-eyebrow">Reservations</p>
-              <h2 class="mt-4 text-4xl">Built for a smoother booking flow.</h2>
-              <p class="mt-5 leading-7" style="color:${design.palette.muted}">Clear hours, location details, and premium table-booking cues help guests decide faster.</p>
-              <div class="mt-8 space-y-3 text-sm" style="color:${design.palette.muted}">
-                <div class="flex items-center justify-between rounded-full px-4 py-3" style="background:${design.palette.surfaceAlt}">
-                  <span>Address</span>
-                  <span style="color:${design.palette.ink}">${city || 'Visit us'}</span>
-                </div>
-                <div class="flex items-center justify-between rounded-full px-4 py-3" style="background:${design.palette.surfaceAlt}">
-                  <span>Reservations</span>
-                  <span style="color:${design.palette.ink}">${showReserve ? 'Available' : 'Call to book'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>`;
-    }
-
-    if (design.hero.variant === 'stacked-marquee') {
-      return `
-      <header id="home" class="${design.spacing.section}" style="${design.hero.height}">
-        <div class="max-w-7xl mx-auto ${design.spacing.container}">
-          ${renderNav()}
-          <div class="mt-12 grid gap-6">
-            <div class="relative overflow-hidden synthr-media p-8 md:p-12 lg:p-16" style="min-height:40rem;background:${design.palette.footer};border-radius:${design.radius.media};box-shadow:${design.shadows.hero}">
-              ${heroImage ? `<img src="${heroImage.url}" alt="${heroImage.alt}" class="absolute inset-0 h-full w-full object-cover opacity-55" />` : ''}
-              <div class="absolute inset-0" style="background:linear-gradient(135deg, ${design.palette.heroOverlay}, rgba(15,23,42,0.12))"></div>
-              <div class="relative z-10 max-w-3xl text-white">
-                <p class="synthr-eyebrow" style="color:rgba(255,255,255,0.74)">${heroEyebrow}</p>
-                <h1 class="mt-5" style="max-width:10ch">${tagline}</h1>
-                <p class="mt-5 max-w-2xl text-lg leading-8 text-white/82">${summary}</p>
-                ${renderPrimaryButtons()}
-              </div>
-              <div class="relative z-10 mt-10 grid max-w-4xl gap-4 md:grid-cols-3">
-                <div class="rounded-[999px] bg-white/12 px-4 py-3 text-sm text-white/82 backdrop-blur">Direct traffic-ready</div>
-                <div class="rounded-[999px] bg-white/12 px-4 py-3 text-sm text-white/82 backdrop-blur">Mobile-first layout</div>
-                <div class="rounded-[999px] bg-white/12 px-4 py-3 text-sm text-white/82 backdrop-blur">Clear menu hierarchy</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>`;
-    }
-
-    return `
-    <header id="home" class="${design.spacing.section}" style="${design.hero.height}">
+  const renderHero = () => `
+    <header id="home" class="pt-6 pb-14 md:pt-8 md:pb-20">
       <div class="max-w-7xl mx-auto ${design.spacing.container}">
         ${renderNav()}
-        <div class="relative mt-12 overflow-hidden synthr-media" style="min-height:42rem;border-radius:${design.radius.media};box-shadow:${design.shadows.hero}">
-          ${heroImage ? `<img src="${heroImage.url}" alt="${heroImage.alt}" class="absolute inset-0 h-full w-full object-cover" />` : ''}
-          <div class="absolute inset-0" style="background:linear-gradient(180deg, rgba(15,23,42,0.12), ${design.palette.heroOverlay})"></div>
-          <div class="relative z-10 flex h-full items-end p-8 md:p-12 lg:p-16">
-            <div style="${design.hero.contentWidth}; color:white">
-              <p class="synthr-eyebrow" style="color:rgba(255,255,255,0.74)">${heroEyebrow}</p>
-              <h1 class="mt-5" style="max-width:10ch">${tagline}</h1>
-              <p class="mt-5 max-w-2xl text-lg leading-8 text-white/82">${summary}</p>
-              ${renderPrimaryButtons()}
+        <div class="mt-6 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+          <div class="relative min-h-[34rem] overflow-hidden synthr-media" style="border-radius:${design.radius.media};box-shadow:${design.shadows.hero}">
+            ${heroImage ? `<img src="${escapeHtml(heroImage.url)}" alt="${escapeHtml(heroImage.alt)}" class="absolute inset-0 h-full w-full object-cover" />` : ''}
+            <div class="absolute inset-0" style="background:linear-gradient(180deg, rgba(15,23,42,0.08), ${design.palette.heroOverlay})"></div>
+            <div class="relative z-10 flex h-full flex-col justify-end p-7 md:p-10 lg:p-14 text-white">
+              <p class="synthr-eyebrow" style="color:rgba(255,255,255,0.76)">${escapeHtml(heroEyebrow)}</p>
+              <h1 class="mt-4 max-w-[10ch] text-white">${escapeHtml(name)}</h1>
+              <p class="mt-4 max-w-2xl text-base leading-7 text-white/82 md:text-lg md:leading-8">${escapeHtml(heroSupport)}</p>
+              <div class="mt-8 flex flex-wrap gap-3">
+                <a href="${primaryHref}" class="inline-flex items-center justify-center px-6 py-3 synthr-button-primary">${primaryLabel}</a>
+                <a href="${secondaryHref}" class="inline-flex items-center justify-center px-6 py-3 rounded-full border border-white/20 bg-white/10 text-white backdrop-blur">${secondaryLabel}</a>
+              </div>
+              <div class="mt-8 flex flex-wrap gap-3">
+                ${heroHighlights
+                  .map(
+                    (highlight) =>
+                      `<span class="rounded-full border border-white/14 bg-white/10 px-4 py-2 text-sm text-white/82 backdrop-blur">${escapeHtml(highlight)}</span>`
+                  )
+                  .join('')}
+              </div>
+            </div>
+          </div>
+          <div class="grid gap-4 self-end">
+            <div class="synthr-surface p-6 md:p-7">
+              <p class="synthr-eyebrow">Why it feels distinct</p>
+              <h2 class="mt-4 text-[2rem] leading-none">${escapeHtml(
+                featuredMenu[0]?.name ? `Start with ${featuredMenu[0].name}` : `Built around ${cuisineType.toLowerCase()} hospitality`
+              )}</h2>
+              <p class="mt-4 leading-7" style="color:${design.palette.muted}">${escapeHtml(summary)}</p>
+              <div class="mt-6 grid gap-3">
+                ${storyFacts
+                  .map(
+                    (fact) =>
+                      `<div class="rounded-[20px] px-4 py-3 text-sm" style="background:${design.palette.surfaceAlt};color:${design.palette.muted}">${escapeHtml(fact)}</div>`
+                  )
+                  .join('')}
+              </div>
+            </div>
+            <div class="synthr-surface-alt p-6 md:p-7">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <p class="synthr-eyebrow">${showReserve ? 'Reservations' : 'Visit details'}</p>
+                  <p class="mt-3 text-lg font-semibold">${showReserve ? escapeHtml(reserveLabel) : escapeHtml(city || address || 'Get the details before you go.')}</p>
+                </div>
+                <span class="rounded-full px-3 py-1 text-xs uppercase tracking-[0.24em]" style="background:${design.palette.accentSoft};color:${design.palette.ink}">
+                  ${escapeHtml(priceRange)}
+                </span>
+              </div>
+              <div class="mt-5 flex flex-wrap gap-3">
+                ${showReserve ? `<a href="#reserve" class="inline-flex items-center justify-center px-5 py-3 synthr-button-secondary">Book now</a>` : ''}
+                ${showOrder ? `<a href="#order" class="inline-flex items-center justify-center px-5 py-3 synthr-button-secondary">Order takeout</a>` : ''}
+                ${!showReserve && !showOrder ? `<a href="#hours" class="inline-flex items-center justify-center px-5 py-3 synthr-button-secondary">See hours</a>` : ''}
+              </div>
             </div>
           </div>
         </div>
       </div>
     </header>`;
-  };
-
-  const renderNav = () => `
-    <nav class="flex items-center justify-between gap-6 rounded-[999px] px-4 py-3" style="${design.nav.shell}">
-      <a href="#home" class="inline-flex items-center gap-3 font-semibold tracking-tight" style="${design.nav.link}">
-        ${logo ? `<img src="${logo.url}" alt="${name} logo" class="h-10 w-10 rounded-full object-cover" />` : ''}
-        <span>${name}</span>
-      </a>
-      <div class="hidden md:flex items-center gap-5 text-sm" style="${design.nav.link}">
-        ${navLinks.map(([href, label]) => `<a href="${href}" class="transition hover:opacity-65">${label}</a>`).join('')}
-      </div>
-    </nav>`;
 
   const renderAbout = () => `
     <section id="about" class="${design.spacing.section}">
       <div class="max-w-7xl mx-auto ${design.spacing.container}">
-        <div class="grid gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">
+        <div class="grid gap-8 lg:grid-cols-[0.92fr_1.08fr] lg:items-start">
           <div>
-            <p class="synthr-eyebrow">About</p>
-            <h2 class="mt-4">${name}, shaped by ${cuisineType.toLowerCase()} traditions.</h2>
-            <p class="mt-6 text-lg leading-8" style="color:${design.palette.muted}">${summary}</p>
-            <div class="mt-8 flex flex-wrap gap-3 text-sm" style="color:${design.palette.muted}">
-              ${neighborhood ? `<span class="rounded-full px-4 py-2" style="background:${design.palette.surfaceAlt}">Neighborhood: ${neighborhood}</span>` : ''}
-              ${parking ? `<span class="rounded-full px-4 py-2" style="background:${design.palette.surfaceAlt}">Parking: ${parking}</span>` : ''}
-              <span class="rounded-full px-4 py-2" style="background:${design.palette.surfaceAlt}">${priceRange} price point</span>
+            <p class="synthr-eyebrow">Story</p>
+            <h2 class="mt-4">${escapeHtml(storyHeading)}</h2>
+            <p class="mt-5 text-lg leading-8" style="color:${design.palette.muted}">${escapeHtml(story)}</p>
+            <div class="mt-8 grid gap-3 sm:grid-cols-2">
+              ${storyFacts
+                .map(
+                  (fact) =>
+                    `<div class="rounded-[22px] px-4 py-4" style="background:${design.palette.surfaceAlt};border:${design.borders.hairline}">
+                      <span class="text-sm" style="color:${design.palette.muted}">${escapeHtml(fact)}</span>
+                    </div>`
+                )
+                .join('')}
+              ${awards.slice(1, 3)
+                .map(
+                  (award) =>
+                    `<div class="rounded-[22px] px-4 py-4" style="background:${design.palette.surfaceAlt};border:${design.borders.hairline}">
+                      <span class="text-sm" style="color:${design.palette.muted}">${escapeHtml(award)}</span>
+                    </div>`
+                )
+                .join('')}
             </div>
           </div>
-          <div class="grid gap-4 md:grid-cols-2">
-            ${[interiorImage, galleryImages[1] || galleryImages[0]].filter(Boolean).map((img, index) => `
-              <div class="synthr-media" style="border-radius:${design.radius.media}">
-                <img src="${img?.url}" alt="${img?.alt}" class="w-full ${index === 0 ? 'h-[26rem]' : 'h-[18rem] md:h-[26rem]'} object-cover" />
-              </div>
-            `).join('')}
+          <div class="grid gap-4 md:grid-cols-[1.05fr_0.95fr]">
+            ${
+              interiorImage
+                ? `<div class="synthr-media md:row-span-2" style="border-radius:${design.radius.media}">
+                    <img src="${escapeHtml(interiorImage.url)}" alt="${escapeHtml(interiorImage.alt)}" class="h-[23rem] w-full object-cover md:h-full" loading="lazy" />
+                  </div>`
+                : ''
+            }
+            ${
+              foodImages[0]
+                ? `<div class="synthr-media" style="border-radius:${design.radius.media}">
+                    <img src="${escapeHtml(foodImages[0].url)}" alt="${escapeHtml(foodImages[0].alt)}" class="h-[16rem] w-full object-cover" loading="lazy" />
+                  </div>`
+                : ''
+            }
+            <div class="synthr-surface p-6 md:p-7">
+              <p class="synthr-eyebrow">At the table</p>
+              <p class="mt-4 text-lg leading-8" style="color:${design.palette.muted}">
+                ${escapeHtml(
+                  dedupeStrings([
+                    payload.brand?.atmosphere,
+                    payload.brand?.audience ? `A fit for ${payload.brand.audience}` : '',
+                    parking ? `Parking: ${parking}` : '',
+                    dietaryAccommodations.length ? `${dietaryAccommodations.join(', ')} available` : '',
+                  ]).join('. ') || summary
+                )}
+              </p>
+            </div>
           </div>
         </div>
       </div>
     </section>`;
 
-  const renderMenu = () => {
-    if (!menuItems.length) {
-      return `
-      <section id="menu" class="${design.spacing.section}">
-        <div class="max-w-7xl mx-auto ${design.spacing.container}">
-          <div class="grid gap-8 lg:grid-cols-[0.75fr_1.25fr]">
-            <div>
-              <p class="synthr-eyebrow">Menu</p>
-              <h2 class="mt-4">The menu is being refined right now.</h2>
-              <p class="mt-5 text-lg leading-8" style="color:${design.palette.muted}">We can still highlight the space, the story, and the best way to book or order while the full menu is finalized.</p>
-            </div>
-            <div class="synthr-surface p-8">
-              <div class="grid gap-4 md:grid-cols-2">
-                <div class="rounded-[24px] p-6" style="background:${design.palette.surfaceAlt}">
-                  <p class="synthr-eyebrow">Coming soon</p>
-                  <p class="mt-4 text-lg" style="color:${design.palette.muted}">Menu details will be added here with real items only.</p>
-                </div>
-                ${foodImages.slice(0, 1).map((img) => `<div class="synthr-media"><img src="${img.url}" alt="${img.alt}" class="h-[16rem] w-full object-cover" /></div>`).join('')}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>`;
-    }
-
-    const categories = Object.entries(groupedMenu);
-    const categoryBlocks =
-      design.menu.variant === 'editorial-list'
-        ? categories
-            .map(
-              ([category, items]) => `
-          <div class="border-t pt-6" style="border-color:${design.palette.border}">
-            <div class="mb-5 flex items-end justify-between gap-4">
-              <h3 class="text-2xl">${category}</h3>
-              <span class="text-sm" style="color:${design.palette.muted}">${items.length} items</span>
-            </div>
-            <div class="space-y-5">
-              ${items
-                .map(
-                  (item) => `
-                <div class="grid gap-2 md:grid-cols-[1fr_auto] md:items-start">
-                  <div>
-                    <div class="flex items-center gap-3">
-                      <h4 class="text-lg font-semibold">${item?.name || ''}</h4>
-                      ${item?.dietary?.length ? `<span class="text-xs uppercase tracking-[0.24em]" style="color:${design.palette.muted}">${item.dietary.join(' · ')}</span>` : ''}
-                    </div>
-                    <p class="mt-1 leading-7" style="color:${design.palette.muted}">${item?.description || ''}</p>
-                  </div>
-                  <div class="text-base font-semibold">${formatMenuPrice(item?.displayPrice ?? item?.price)}</div>
-                </div>`
-                )
-                .join('')}
-            </div>
-          </div>`
-            )
-            .join('')
-        : categories
-            .map(
-              ([category, items]) => `
-          <div class="synthr-surface p-6">
-            <div class="mb-4 flex items-center justify-between gap-4">
-              <h3 class="text-2xl">${category}</h3>
-              <span class="text-sm" style="color:${design.palette.muted}">${items.length} items</span>
-            </div>
-            <div class="space-y-4">
-              ${items
-                .map(
-                  (item) => `
-                <div class="rounded-[24px] p-4" style="background:${design.palette.surfaceAlt}">
-                  <div class="flex items-start justify-between gap-4">
-                    <div>
-                      <h4 class="text-lg font-semibold">${item?.name || ''}</h4>
-                      <p class="mt-1 text-sm leading-7" style="color:${design.palette.muted}">${item?.description || ''}</p>
-                    </div>
-                    <div class="text-base font-semibold">${formatMenuPrice(item?.displayPrice ?? item?.price)}</div>
-                  </div>
-                </div>`
-                )
-                .join('')}
-            </div>
-          </div>`
-            )
-            .join('');
-
-    return `
+  const renderMenu = () => `
     <section id="menu" class="${design.spacing.section}">
-      <div class="max-w-7xl mx-auto ${design.spacing.container}">
-        <div class="grid gap-10 lg:grid-cols-[0.65fr_1.35fr]">
+      <div id="featured" class="max-w-7xl mx-auto ${design.spacing.container}">
+        <div class="grid gap-10 lg:grid-cols-[0.72fr_1.28fr]">
           <div>
             <p class="synthr-eyebrow">Menu</p>
-            <h2 class="mt-4">${design.menu.variant === 'editorial-list' ? 'Real menu highlights, presented with clarity.' : 'A menu built around what people decide on fast.'}</h2>
-            <p class="mt-5 text-lg leading-8" style="color:${design.palette.muted}">Every item below comes directly from the restaurant details you entered. No invented dishes, no filler.</p>
+            <h2 class="mt-4">${escapeHtml(menuHeading)}</h2>
+            <p class="mt-5 text-lg leading-8" style="color:${design.palette.muted}">
+              ${escapeHtml(menuIntro)}
+            </p>
+            ${
+              featuredMenu.length
+                ? `<ol class="mt-8 space-y-4">
+                    ${featuredMenu
+                      .map(
+                        (item, index) => `
+                          <li class="grid grid-cols-[auto_1fr] gap-4">
+                            <span class="text-sm font-semibold" style="color:${design.palette.accentStrong}">0${index + 1}</span>
+                            <div>
+                              <p class="font-semibold">${escapeHtml(item.name)}${item.price ? ` <span style="color:${design.palette.muted}">${escapeHtml(item.price)}</span>` : ''}</p>
+                              <p class="mt-1 text-sm leading-7" style="color:${design.palette.muted}">${escapeHtml(
+                                dedupeStrings([
+                                  item.category,
+                                  item.dietary.length ? item.dietary.join(' · ') : '',
+                                ]).join(' · ') || 'House favorite'
+                              )}</p>
+                            </div>
+                          </li>`
+                      )
+                      .join('')}
+                  </ol>`
+                : ''
+            }
+            <div class="mt-8 flex flex-wrap gap-3">
+              ${showReserve ? `<a href="#reserve" class="inline-flex items-center justify-center px-5 py-3 synthr-button-secondary">Reserve before you come</a>` : ''}
+              ${showOrder ? `<a href="#order" class="inline-flex items-center justify-center px-5 py-3 synthr-button-secondary">${escapeHtml(orderSecondaryLabel)}</a>` : ''}
+            </div>
           </div>
-          <div class="${design.menu.variant === 'editorial-list' ? 'space-y-2' : 'grid gap-6 md:grid-cols-2'}">
-            ${categoryBlocks}
+          <div class="space-y-6">
+            ${
+              foodImages.slice(0, 2).length
+                ? `<div class="grid gap-4 sm:grid-cols-2">
+                    ${foodImages
+                      .slice(0, 2)
+                      .map(
+                        (img, index) => `
+                          <div class="synthr-media" style="border-radius:${design.radius.media}">
+                            <img src="${escapeHtml(img.url)}" alt="${escapeHtml(img.alt)}" class="w-full object-cover ${index === 0 ? 'h-[16rem] sm:h-[20rem]' : 'h-[16rem]'}" loading="lazy" />
+                          </div>`
+                      )
+                      .join('')}
+                  </div>`
+                : ''
+            }
+            ${
+              menuByCategory.length
+                ? `<div class="grid gap-5 md:grid-cols-2">
+                    ${menuByCategory
+                      .map(
+                        ([category, items]) => `
+                          <article class="synthr-surface p-6 md:p-7">
+                            <div class="flex items-center justify-between gap-4">
+                              <h3 class="text-[1.65rem]">${escapeHtml(category)}</h3>
+                              <span class="text-xs uppercase tracking-[0.24em]" style="color:${design.palette.muted}">${items.length} items</span>
+                            </div>
+                            <div class="mt-5 space-y-5">
+                              ${items
+                                .slice(0, 4)
+                                .map(
+                                  (item) => `
+                                    <div class="grid gap-2 md:grid-cols-[1fr_auto] md:items-start">
+                                      <div>
+                                        <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                          <h4 class="text-lg font-semibold">${escapeHtml(item.name)}</h4>
+                                          ${
+                                            item.dietary.length
+                                              ? `<span class="text-[11px] uppercase tracking-[0.24em]" style="color:${design.palette.muted}">${escapeHtml(
+                                                  item.dietary.join(' · ')
+                                                )}</span>`
+                                              : ''
+                                          }
+                                        </div>
+                                        ${item.description ? `<p class="mt-1 text-sm leading-7" style="color:${design.palette.muted}">${escapeHtml(item.description)}</p>` : ''}
+                                      </div>
+                                      ${item.price ? `<div class="text-base font-semibold">${escapeHtml(item.price)}</div>` : ''}
+                                    </div>`
+                                )
+                                .join('')}
+                            </div>
+                          </article>`
+                      )
+                      .join('')}
+                  </div>`
+                : `<div class="synthr-surface p-8">
+                    <p class="synthr-eyebrow">Menu coming soon</p>
+                    <p class="mt-4 text-lg leading-8" style="color:${design.palette.muted}">Paste menu text or add a few real items in the builder to turn this into a full featured menu section.</p>
+                  </div>`
+            }
           </div>
         </div>
       </div>
     </section>`;
-  };
 
   const renderExperience = () => `
     <section id="experience" class="${design.spacing.section}">
       <div class="max-w-7xl mx-auto ${design.spacing.container}">
         <div class="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-          <div class="grid gap-6 md:grid-cols-2">
-            ${galleryImages.slice(0, 3).map((img, index) => `
-              <div class="synthr-media ${index === 0 ? 'md:col-span-2' : ''}" style="border-radius:${design.radius.media}">
-                <img src="${img.url}" alt="${img.alt}" class="w-full ${index === 0 ? 'h-[28rem]' : 'h-[18rem]'} object-cover" />
-              </div>
-            `).join('')}
+          <div class="grid gap-4 sm:grid-cols-2">
+            ${galleryImages
+              .slice(0, 3)
+              .map(
+                (img, index) => `
+                  <div class="synthr-media ${index === 0 ? 'sm:col-span-2' : ''}" style="border-radius:${design.radius.media}">
+                    <img src="${escapeHtml(img.url)}" alt="${escapeHtml(img.alt)}" class="w-full object-cover ${index === 0 ? 'h-[20rem] md:h-[28rem]' : 'h-[16rem]'}" loading="lazy" />
+                  </div>`
+              )
+              .join('')}
           </div>
           <div class="self-center">
-            <p class="synthr-eyebrow">Experience</p>
-            <h2 class="mt-4">${design.variant === 'editorial-luxe' ? 'A stronger first impression, beyond the menu.' : 'A site that sells the room, not just the dishes.'}</h2>
-            <p class="mt-5 text-lg leading-8" style="color:${design.palette.muted}">${payload.fullStory || payload.brand?.story || `${name} is built around a clear sense of place, strong presentation, and simple ways for guests to take the next step.`}</p>
-          </div>
-        </div>
-      </div>
-    </section>`;
-
-  const renderHours = () => {
-    const hoursEntries = Object.entries(payload.hours || {}).filter(([, value]) => value);
-    return `
-    <section id="hours" class="${design.spacing.section}">
-      <div class="max-w-7xl mx-auto ${design.spacing.container}">
-        <div class="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-          <div class="synthr-surface p-8">
-            <p class="synthr-eyebrow">Hours</p>
-            <h2 class="mt-4">Plan your visit.</h2>
-            <div class="mt-8 space-y-3">
-              ${
-                hoursEntries.length
-                  ? hoursEntries
-                      .map(
-                        ([day, time]) => `
-                    <div class="flex items-center justify-between gap-4 rounded-[20px] px-4 py-3" style="background:${design.palette.surfaceAlt}">
-                      <span>${day}</span>
-                      <span style="color:${design.palette.muted}">${time}</span>
-                    </div>`
-                      )
-                      .join('')
-                  : `<div class="rounded-[20px] px-4 py-4" style="background:${design.palette.surfaceAlt};color:${design.palette.muted}">Hours available on request.</div>`
-              }
-            </div>
-          </div>
-          <div class="synthr-surface p-8">
-            <p class="synthr-eyebrow">Location</p>
-            <h2 class="mt-4">${address}${city ? `, ${city}` : ''}</h2>
-            <div class="mt-6 space-y-2 text-lg" style="color:${design.palette.muted}">
-              <p>${phone || 'Call for details'}</p>
-              <p>${email || ''}</p>
-            </div>
-            ${googleMapsLink ? `<a href="${googleMapsLink}" class="inline-flex items-center gap-2 mt-8" style="color:${design.palette.accentStrong}">Open in Google Maps</a>` : ''}
-          </div>
-        </div>
-      </div>
-    </section>`;
-  };
-
-  const renderOrder = () => `
-    <section id="order" class="${design.spacing.section}">
-      <div class="max-w-7xl mx-auto ${design.spacing.container}">
-        <div class="synthr-surface p-8 md:p-10">
-          <div class="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
-            <div>
-              <p class="synthr-eyebrow">Ordering</p>
-              <h2 class="mt-4">Keep direct orders easy to start.</h2>
-              <p class="mt-5 text-lg leading-8" style="color:${design.palette.muted}">
-                ${
-                  payload.onlineOrdering?.acceptOrders
-                    ? `Available ${payload.onlineOrdering.platforms?.length ? `on ${payload.onlineOrdering.platforms.join(', ')}` : 'online'} with a clear call to action.`
-                    : `Call ${phone || 'the restaurant'} to place an order or check availability.`
-                }
-              </p>
-            </div>
-            <div>
-              <a href="${payload.onlineOrdering?.customURL || '#contact'}" class="inline-flex items-center justify-center px-6 py-3 synthr-button-primary" style="${design.cta.primary}">
-                ${payload.onlineOrdering?.acceptOrders ? 'Start an order' : 'Contact the restaurant'}
-              </a>
-            </div>
+            <p class="synthr-eyebrow">Atmosphere</p>
+            <h2 class="mt-4">${escapeHtml(experienceHeading)}</h2>
+            <p class="mt-5 text-lg leading-8" style="color:${design.palette.muted}">
+              ${escapeHtml(experienceBody)}
+            </p>
+            ${
+              payload.hostEvents || privateEventCapacity
+                ? `<div class="mt-8 rounded-[24px] p-6" style="background:${design.palette.surfaceAlt};border:${design.borders.hairline}">
+                    <p class="synthr-eyebrow">Events</p>
+                    <p class="mt-3 text-base leading-7" style="color:${design.palette.muted}">
+                      ${escapeHtml(
+                        privateEventCapacity
+                          ? `Private events for up to ${privateEventCapacity} guests.`
+                          : 'Event and catering inquiries are available on request.'
+                      )}
+                    </p>
+                    ${
+                      eventsEmail
+                        ? `<a href="mailto:${escapeHtml(eventsEmail)}" class="mt-4 inline-flex items-center justify-center px-5 py-3 synthr-button-secondary">Inquire about events</a>`
+                        : ''
+                    }
+                  </div>`
+                : ''
+            }
           </div>
         </div>
       </div>
@@ -1690,66 +2095,180 @@ const buildFallbackHtml = (payload: GenerationPayload): string => {
   const renderReserve = () => `
     <section id="reserve" class="${design.spacing.section}">
       <div class="max-w-7xl mx-auto ${design.spacing.container}">
-        <div class="overflow-hidden rounded-[${design.radius.media}] p-8 md:p-10 synthr-dark-surface" style="background:${design.palette.footer};box-shadow:${design.shadows.card}">
+        <div class="grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
+          <div class="overflow-hidden rounded-[${design.radius.media}] p-8 md:p-10 synthr-dark-surface" style="background:${design.palette.footer};box-shadow:${design.shadows.card}">
+            <p class="synthr-eyebrow" style="color:rgba(255,255,255,0.6)">Reservations</p>
+            <h2 class="mt-4 text-white">${escapeHtml(reserveHeading)}</h2>
+            <p class="mt-5 max-w-2xl text-lg leading-8 text-white/76">${escapeHtml(reserveBody)}</p>
+            <div class="mt-8 grid gap-3 text-sm text-white/76">
+              <div class="rounded-[22px] border border-white/12 bg-white/6 px-4 py-3">${escapeHtml(city ? `${city}${neighborhood ? `, ${neighborhood}` : ''}` : 'Restaurant location')}</div>
+              <div class="rounded-[22px] border border-white/12 bg-white/6 px-4 py-3">${escapeHtml(
+                hoursEntries[0]?.value ? `Today’s flow starts from posted hours.` : 'Share live hours as soon as they are available.'
+              )}</div>
+              ${showOrder ? `<div class="rounded-[22px] border border-white/12 bg-white/6 px-4 py-3">${escapeHtml(orderSecondaryLabel)}</div>` : ''}
+            </div>
+          </div>
+          <form class="synthr-surface p-6 md:p-8" aria-label="Reservation details">
+            <p class="synthr-eyebrow">Plan your table</p>
+            <div class="mt-6 grid gap-4 sm:grid-cols-2">
+              <label class="grid gap-2">
+                <span class="text-sm font-medium">Date</span>
+                <input type="date" class="rounded-[18px] border px-4 py-3" style="border-color:${design.palette.border};background:${design.palette.surfaceAlt}" />
+              </label>
+              <label class="grid gap-2">
+                <span class="text-sm font-medium">Time</span>
+                <input type="time" class="rounded-[18px] border px-4 py-3" style="border-color:${design.palette.border};background:${design.palette.surfaceAlt}" />
+              </label>
+              <label class="grid gap-2">
+                <span class="text-sm font-medium">Party size</span>
+                <select class="rounded-[18px] border px-4 py-3" style="border-color:${design.palette.border};background:${design.palette.surfaceAlt}">
+                  <option>2 guests</option>
+                  <option>4 guests</option>
+                  <option>6 guests</option>
+                  <option>8+ guests</option>
+                </select>
+              </label>
+              <label class="grid gap-2">
+                <span class="text-sm font-medium">Name</span>
+                <input type="text" placeholder="Guest name" class="rounded-[18px] border px-4 py-3" style="border-color:${design.palette.border};background:${design.palette.surfaceAlt}" />
+              </label>
+            </div>
+            <div class="mt-6 flex flex-wrap gap-3">
+              <a href="${safeHref(reserveUrl, '#hours')}" class="inline-flex items-center justify-center px-6 py-3 synthr-button-primary">${escapeHtml(
+                showReserve ? reserveLabel : 'Contact the restaurant'
+              )}</a>
+              ${showOrder ? `<a href="#order" class="inline-flex items-center justify-center px-6 py-3 synthr-button-secondary">Takeout instead</a>` : ''}
+            </div>
+            <p class="mt-4 text-sm leading-6" style="color:${design.palette.muted}">
+              ${escapeHtml(
+                showReserve
+                  ? `${reserveLabel} is the primary conversion path here, while the rest of the page supports trust and decision-making.`
+                  : 'If reservations are handled manually today, keep the call or email path clear and friction-free.'
+              )}
+            </p>
+          </form>
+        </div>
+      </div>
+    </section>`;
+
+  const renderOrder = () => `
+    <section id="order" class="${design.spacing.section}">
+      <div class="max-w-7xl mx-auto ${design.spacing.container}">
+        <div class="synthr-surface p-8 md:p-10">
           <div class="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
             <div>
-              <p class="synthr-eyebrow" style="color:rgba(255,255,255,0.6)">Reservations</p>
-              <h2 class="mt-4 text-white">${showReserve ? 'Reserve a table with a premium booking flow.' : 'Reach out directly for reservations and event inquiries.'}</h2>
-              <p class="mt-5 max-w-2xl text-lg leading-8 text-white/76">${showReserve ? 'Built for restaurants that want bookings to feel easy, clear, and worth following through on.' : 'This section can be turned into a booking experience as soon as reservation details are ready.'}</p>
+              <p class="synthr-eyebrow">Ordering</p>
+              <h2 class="mt-4">${escapeHtml(orderHeading)}</h2>
+              <p class="mt-5 text-lg leading-8" style="color:${design.palette.muted}">
+                ${escapeHtml(orderBody)}
+              </p>
             </div>
-            <div>
-              <a href="${payload.reservations?.url || '#contact'}" class="inline-flex items-center justify-center px-6 py-3 rounded-full border border-white/18 bg-white text-slate-900 shadow-lg">
-                ${showReserve ? 'Book now' : 'Get in touch'}
-              </a>
+            <div class="flex flex-wrap gap-3">
+              ${showOrder ? `<a href="${safeHref(orderUrl, '#hours')}" class="inline-flex items-center justify-center px-6 py-3 synthr-button-primary">${escapeHtml(orderLabel)}</a>` : ''}
+              <a href="#menu" class="inline-flex items-center justify-center px-6 py-3 synthr-button-secondary">Browse menu highlights</a>
             </div>
           </div>
         </div>
       </div>
     </section>`;
 
-  const renderContact = () => `
-    <section id="contact" class="${design.spacing.section}">
+  const renderVisit = () => `
+    <section id="hours" class="${design.spacing.section}">
+      <div id="contact" aria-hidden="true" style="position:relative;top:-88px;height:0;overflow:hidden"></div>
       <div class="max-w-7xl mx-auto ${design.spacing.container}">
-        <div class="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
+        <div class="grid gap-8 lg:grid-cols-[0.78fr_1.22fr]">
           <div>
-            <p class="synthr-eyebrow">Contact</p>
-            <h2 class="mt-4">Everything guests need in one place.</h2>
-            <p class="mt-5 text-lg leading-8" style="color:${design.palette.muted}">Location, booking, and ordering details should feel effortless to find.</p>
+            <p class="synthr-eyebrow">Visit</p>
+            <h2 class="mt-4">${escapeHtml(visitHeading)}</h2>
+            <p class="mt-5 text-lg leading-8" style="color:${design.palette.muted}">
+              ${escapeHtml(visitBody)}
+            </p>
+            ${
+              socialLinks.length
+                ? `<div class="mt-6 flex flex-wrap gap-3">
+                    ${socialLinks
+                      .map(
+                        (link) =>
+                          `<a href="${safeHref(link.href)}" class="inline-flex items-center justify-center rounded-full border px-4 py-2 text-sm" style="border-color:${design.palette.border};color:${design.palette.ink}">${link.label}</a>`
+                      )
+                      .join('')}
+                  </div>`
+                : ''
+            }
           </div>
-          <div class="grid gap-6 md:grid-cols-2">
-            <div class="synthr-surface p-6">
-              <h3 class="text-xl">${name}</h3>
-              <p class="mt-4 leading-7" style="color:${design.palette.muted}">${address}${city ? `, ${city}` : ''}</p>
-              ${neighborhood ? `<p class="mt-2 leading-7" style="color:${design.palette.muted}">Neighborhood: ${neighborhood}</p>` : ''}
-              ${parking ? `<p class="mt-2 leading-7" style="color:${design.palette.muted}">Parking: ${parking}</p>` : ''}
+          <div class="grid gap-4 md:grid-cols-[0.95fr_1.05fr]">
+            <div class="synthr-surface p-6 md:p-7">
+              <p class="synthr-eyebrow">Contact</p>
+              <div class="mt-5 space-y-4">
+                <div>
+                  <p class="text-sm" style="color:${design.palette.muted}">Address</p>
+                  <p class="mt-1 text-lg">${escapeHtml(address || city || 'Address available soon')}</p>
+                  ${city && address ? `<p class="text-sm" style="color:${design.palette.muted}">${escapeHtml(city)}</p>` : ''}
+                </div>
+                ${phone ? `<div><p class="text-sm" style="color:${design.palette.muted}">Phone</p><a href="tel:${escapeHtml(phone.replace(/[^\d+]/g, ''))}" class="mt-1 inline-flex text-lg">${escapeHtml(phone)}</a></div>` : ''}
+                ${email ? `<div><p class="text-sm" style="color:${design.palette.muted}">Email</p><a href="mailto:${escapeHtml(email)}" class="mt-1 inline-flex text-lg">${escapeHtml(email)}</a></div>` : ''}
+                ${googleMapsLink ? `<a href="${safeHref(googleMapsLink)}" class="inline-flex items-center justify-center px-5 py-3 synthr-button-secondary">Open in Google Maps</a>` : ''}
+              </div>
             </div>
-            <div class="synthr-surface p-6">
-              <p>Phone: <a href="tel:${phone}" style="color:${design.palette.accentStrong}">${phone}</a></p>
-              <p class="mt-3">Email: <a href="mailto:${email}" style="color:${design.palette.accentStrong}">${email}</a></p>
-              ${
-                payload.socialLinks && Object.values(payload.socialLinks).some(Boolean)
-                  ? `<div class="mt-6 flex flex-wrap gap-3 text-sm">
-                      ${payload.socialLinks.instagram ? `<a href="https://instagram.com/${payload.socialLinks.instagram}">Instagram</a>` : ''}
-                      ${payload.socialLinks.tiktok ? `<a href="https://tiktok.com/@${payload.socialLinks.tiktok}">TikTok</a>` : ''}
-                      ${payload.socialLinks.googleReviews ? `<a href="${payload.socialLinks.googleReviews}">Google Reviews</a>` : ''}
-                      ${payload.socialLinks.yelp ? `<a href="${payload.socialLinks.yelp}">Yelp</a>` : ''}
-                    </div>`
-                  : ''
-              }
+            <div class="synthr-surface p-6 md:p-7">
+              <p class="synthr-eyebrow">Hours</p>
+              <div class="mt-5 space-y-3">
+                ${
+                  hoursEntries.length
+                    ? hoursEntries
+                        .map(
+                          ({ day, value }) => `
+                            <div class="flex items-center justify-between gap-4 rounded-[18px] px-4 py-3" style="background:${design.palette.surfaceAlt}">
+                              <span>${day}</span>
+                              <span style="color:${design.palette.muted}">${value}</span>
+                            </div>`
+                        )
+                        .join('')
+                    : `<div class="rounded-[18px] px-4 py-4" style="background:${design.palette.surfaceAlt};color:${design.palette.muted}">Hours available on request.</div>`
+                }
+              </div>
             </div>
           </div>
         </div>
       </div>
     </section>`;
+
+  const renderFooter = () => `
+    <footer class="pt-14 pb-10 synthr-dark-surface" style="background:${design.palette.footer}">
+      <div class="max-w-7xl mx-auto ${design.spacing.container}">
+        <div class="grid gap-10 lg:grid-cols-[1.15fr_0.6fr_0.75fr]">
+          <div>
+            <p class="synthr-eyebrow" style="color:rgba(255,255,255,0.54)">Footer</p>
+            <h2 class="mt-4 text-white">${escapeHtml(name)}</h2>
+            <p class="mt-4 max-w-xl text-white/68">${escapeHtml(footerTagline)}</p>
+          </div>
+          <div>
+            <p class="text-sm font-semibold text-white">Explore</p>
+            <div class="mt-4 flex flex-col gap-3 text-white/68">
+              ${navLinks.map(([href, label]) => `<a href="${href}" class="transition hover:text-white">${label}</a>`).join('')}
+            </div>
+          </div>
+          <div class="text-white/68">
+            <p class="text-sm font-semibold text-white">Visit</p>
+            <p class="mt-4">${escapeHtml(address)}${city ? `<br />${escapeHtml(city)}` : ''}</p>
+            ${phone ? `<p class="mt-3"><a href="tel:${escapeHtml(phone.replace(/[^\d+]/g, ''))}" class="hover:text-white">${escapeHtml(phone)}</a></p>` : ''}
+            ${email ? `<p class="mt-2"><a href="mailto:${escapeHtml(email)}" class="hover:text-white">${escapeHtml(email)}</a></p>` : ''}
+          </div>
+        </div>
+        <div class="mt-10 flex flex-col gap-3 border-t pt-6 text-sm text-white/44 md:flex-row md:items-center md:justify-between" style="border-color:rgba(255,255,255,0.12)">
+          <p>© ${new Date().getFullYear()} ${escapeHtml(name)}</p>
+          <p>${escapeHtml([cuisineType, priceRange, city].filter(Boolean).join(' · '))}</p>
+        </div>
+      </div>
+    </footer>`;
 
   const sectionMarkup: Record<string, string> = {
     about: renderAbout(),
     menu: renderMenu(),
-    experience: renderExperience(),
-    hours: renderHours(),
-    order: renderOrder(),
-    reserve: renderReserve(),
-    contact: renderContact(),
+    experience: showExperience ? renderExperience() : '',
+    reserve: showReserve ? renderReserve() : '',
+    order: showOrder ? renderOrder() : '',
+    hours: renderVisit(),
   };
 
   return `<!DOCTYPE html>
@@ -1757,30 +2276,15 @@ const buildFallbackHtml = (payload: GenerationPayload): string => {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${name} | ${cuisineType}</title>
+    <title>${escapeHtml(name)} | ${escapeHtml(cuisineType)}</title>
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
   <body style="background:${design.palette.canvas}; color:${design.palette.ink}">
     ${renderHero()}
     <main>
-      ${design.layout.sectionOrder.map((key) => sectionMarkup[key] || '').join('\n')}
+      ${sectionOrder.map((key) => sectionMarkup[key] || '').join('\n')}
     </main>
-    <footer class="py-12 synthr-dark-surface" style="background:${design.palette.footer}">
-      <div class="max-w-7xl mx-auto ${design.spacing.container}">
-        <div class="grid gap-8 md:grid-cols-[1fr_auto] md:items-end">
-          <div>
-            <p class="synthr-eyebrow" style="color:rgba(255,255,255,0.54)">Footer</p>
-            <h3 class="mt-4 text-3xl text-white">${name}</h3>
-            <p class="mt-4 max-w-xl text-white/68">${summary}</p>
-          </div>
-          <div class="text-sm text-white/60 md:text-right">
-            <p>${address}${city ? `, ${city}` : ''}</p>
-            <p class="mt-2">${phone}${email ? ` · ${email}` : ''}</p>
-            <p class="mt-5">© ${new Date().getFullYear()} ${name}</p>
-          </div>
-        </div>
-      </div>
-    </footer>
+    ${renderFooter()}
   </body>
 </html>`;
 };
@@ -1791,25 +2295,70 @@ const genericPhrases = [
   /crafted with care/gi,
   /something for everyone/gi,
   /taste the difference/gi,
+  /perfect place for/gi,
+  /memorable experience/gi,
+  /world-class/gi,
 ];
+
+const extractTextContent = (html: string) =>
+  html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const getSectionSlice = (html: string, id: string): string => {
+  const match = html.match(new RegExp(`<section[^>]*id=["']${id}["'][^>]*>[\\s\\S]*?<\\/section>`, 'i'));
+  if (match?.[0]) return match[0];
+  const headerMatch = id === 'home' ? html.match(/<header[^>]*id=["']home["'][^>]*>[\s\S]*?<\/header>/i) : null;
+  return headerMatch?.[0] || '';
+};
+
+const countRepeatedPhrases = (text: string): number => {
+  const normalized = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\b(the|and|for|with|from|that|this|your|our|are|was|were|into|about)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const words = normalized.split(' ').filter(Boolean);
+  const counts = new Map<string, number>();
+
+  for (let index = 0; index < words.length - 3; index += 1) {
+    const phrase = words.slice(index, index + 4).join(' ');
+    if (phrase.length < 18) continue;
+    counts.set(phrase, (counts.get(phrase) || 0) + 1);
+  }
+
+  return [...counts.values()].filter((count) => count >= 3).length;
+};
 
 const buildVisualDirection = (payload: GenerationPayload) => {
   const design = getDesignSystem(payload);
+  const sections = buildSections(payload);
   const directives: string[] = [
     `Design system variant: ${design.variant}.`,
     `Hero variant: ${design.hero.variant}.`,
     `Menu layout: ${design.menu.variant}.`,
     `Navigation pattern: ${design.layout.navPattern}.`,
     `Image treatment: ${design.layout.imageTreatment}.`,
-    `Section rhythm: ${design.layout.sectionOrder.join(' -> ')}.`,
+    `Preferred section sequence: ${sections.sectionOrder.join(' -> ')}.`,
     'Make the site feel expensive, restaurant-specific, and hand-shaped rather than like a default Tailwind landing page.',
+    'Use 5 to 7 strong sections total, not a long stack of weak ones.',
     'Use stronger composition: asymmetric sections, mixed content density, and at least one large image-led moment.',
-    'Avoid repeating identical card grids from section to section.',
+    'Avoid repeating identical card grids from section to section or boxing every block the same way.',
     'Use cleaner editorial pacing with larger headlines, quieter supporting copy, and more deliberate whitespace.',
-    'The menu should feel designed, not dumped into generic cards.',
+    'The menu should feel curated and appetizing, not dumped into generic cards.',
+    'Combine hours, location, and contact into one clean visit moment instead of scattering them.',
     'The nav and footer should feel custom to the chosen direction, not like a generic SaaS header.',
     'Use soft dividers, nuanced shadows, and layered surfaces only where they actually help.',
-    'Do not over-box every section.',
+    'Do not generate fake testimonials, fake awards, or generic experience sections with empty claims.',
+    'Do not create giant white panel sections with one centered heading, one paragraph, and a random image dropped underneath.',
+    'Do not make the hero just a restaurant name on top of a photo. It needs supporting copy and CTA hierarchy.',
+    'Do not create isolated bright orange CTA bars with a single button and no surrounding context.',
+    'Do not use centered contact stacks with plain links as the main contact experience.',
+    'Choose images that match the section purpose. Avoid random cocktail or bar photos in story sections unless the bar program is explicitly part of the brand.',
   ];
 
   if (design.variant === 'editorial-luxe') {
@@ -1827,34 +2376,182 @@ const buildVisualDirection = (payload: GenerationPayload) => {
 
 const collectHtmlIssues = (html: string): string[] => {
   const issues: string[] = [];
-  if (html.length < 700) issues.push('too-short');
+  const textContent = extractTextContent(html);
+  const sectionCount = (html.match(/<section\b/gi) || []).length;
+  const imageCount = (html.match(/<img\b/gi) || []).length + (html.match(/background-image\s*:/gi) || []).length;
+  const heroSlice = getSectionSlice(html, 'home');
+  const menuSlice = getSectionSlice(html, 'menu');
+  const reserveSlice = getSectionSlice(html, 'reserve');
+  const hoursSlice = getSectionSlice(html, 'hours');
+  const navSlice = html.match(/<nav\b[\s\S]*?<\/nav>/i)?.[0] || '';
+  const footerSlice = html.match(/<footer\b[\s\S]*?<\/footer>/i)?.[0] || '';
+  const heroWordCount = extractTextContent(heroSlice).split(/\s+/).filter(Boolean).length;
+  const heroButtonCount = (heroSlice.match(/<(a|button)\b/gi) || []).length;
+  const menuItemSignals = (menuSlice.match(/<h4\b|<li\b|<article\b/gi) || []).length;
+  const menuDescriptionSignals = (menuSlice.match(/<p\b/gi) || []).length;
+  const reserveInteractiveCount = (reserveSlice.match(/<(a|button|input|select|textarea)\b/gi) || []).length;
+  const repeatedHalfLayoutCount = (html.match(/w-full\s+lg:w-1\/2|lg:grid-cols-\[0\.5|lg:grid-cols-\[1fr_1fr|flex\s+flex-wrap\s+justify-center/gi) || []).length;
+  const hasLegacyTailwindStylesheet = /cdn\.jsdelivr\.net\/npm\/tailwindcss/i.test(html);
+  const hasDuplicateTailwindRuntime = (html.match(/cdn\.tailwindcss\.com/gi) || []).length > 1 || hasLegacyTailwindStylesheet;
+  const centeredUtilitySectionCount = (html.match(/text-center/gi) || []).length;
+
+  if (html.length < 1200) issues.push('too-short');
   if (!/<body[^>]*>/i.test(html)) issues.push('missing-body');
   if (!/<script[^>]+src=["']https:\/\/cdn\.tailwindcss\.com["'][^>]*><\/script>/i.test(html)) {
     issues.push('missing-tailwind-script');
   }
   if (!/<nav[^>]*>/i.test(html) && !/<header[^>]*>/i.test(html)) issues.push('missing-navigation');
   if (!/<section[^>]*>/i.test(html)) issues.push('missing-sections');
-  if (!/id=["']home["']/i.test(html)) issues.push('missing-home');
-  if (!/id=["']about["']/i.test(html)) issues.push('missing-about');
-  if (!/id=["']menu["']/i.test(html)) issues.push('missing-menu');
-  if (!/id=["']hours["']/i.test(html)) issues.push('missing-hours');
-  if (!/id=["']order["']/i.test(html)) issues.push('missing-order');
-  if (!/id=["']reserve["']/i.test(html)) issues.push('missing-reserve');
-  if (!/id=["']contact["']/i.test(html)) issues.push('missing-contact');
+  if (!/<footer\b/i.test(html)) issues.push('missing-footer');
   const h1Matches = html.match(/<h1\b/gi) || [];
   if (h1Matches.length === 0) issues.push('missing-h1');
   if (h1Matches.length > 1) issues.push('multiple-h1');
-  if (!/(Order Now|Reserve|Book Now|View Menu)/i.test(html)) issues.push('weak-cta');
-  if (/lorem ipsum|placeholder/gi.test(html)) issues.push('placeholder-copy');
+  if (!/(Reserve|Book|Order|Menu|Visit)/i.test(heroSlice || html)) issues.push('weak-cta');
+  if (/lorem ipsum|placeholder/gi.test(textContent)) issues.push('placeholder-copy');
   const genericHits = genericPhrases.reduce((count, regex) => count + ((html.match(regex) || []).length), 0);
-  if (genericHits >= 3) issues.push('generic-copy');
+  if (genericHits >= 2) issues.push('generic-copy');
+  if (sectionCount > 7) issues.push('too-many-sections');
+  if (imageCount < 2) issues.push('weak-image-treatment');
+  if (!heroSlice || !/<h1\b/i.test(heroSlice) || !/(<img\b|background-image\s*:)/i.test(heroSlice)) issues.push('weak-hero');
+  if (heroWordCount < 16 || heroButtonCount < 1) issues.push('weak-hero-hierarchy');
+  if ((menuSlice.match(/\$/g) || []).length < 2 && menuItemSignals < 3) issues.push('weak-menu');
+  if (menuDescriptionSignals < 2) issues.push('weak-menu-descriptions');
+  if (
+    reserveSlice &&
+    (!/(<input\b|<select\b|Reserve|Book|OpenTable|Resy|tel:|mailto:)/i.test(reserveSlice) || reserveInteractiveCount < 2)
+  ) {
+    issues.push('weak-reservation');
+  }
+  if (hoursSlice && !/(tel:|mailto:|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|\d{1,2}:\d{2})/i.test(hoursSlice)) {
+    issues.push('weak-visit-info');
+  }
+  if (hasDuplicateTailwindRuntime) issues.push('duplicate-tailwind-runtime');
+  if (repeatedHalfLayoutCount >= 4) issues.push('repetitive-split-layouts');
+  if (centeredUtilitySectionCount >= 4 && /(Leave a Review|Instagram|Order Online|Contact Us)/i.test(textContent)) issues.push('weak-contact-composition');
+  if ((navSlice.match(/<a\b/gi) || []).length >= 8 && (footerSlice.match(/<a\b/gi) || []).length >= 6) issues.push('duplicate-nav-footer');
   return issues;
 };
 
 const getFatalIssues = (issues: string[]) =>
   issues.filter((issue) =>
-    ['too-short', 'missing-body', 'missing-navigation', 'missing-sections', 'missing-h1'].includes(issue)
+    [
+      'too-short',
+      'missing-body',
+      'missing-navigation',
+      'missing-sections',
+      'missing-h1',
+      'missing-footer',
+      'weak-hero',
+      'weak-hero-hierarchy',
+      'weak-menu',
+      'weak-menu-descriptions',
+      'weak-reservation',
+      'weak-visit-info',
+      'weak-image-treatment',
+      'duplicate-tailwind-runtime',
+      'weak-contact-composition',
+    ].includes(issue)
   );
+
+export const buildGenerationContentPlanPrompt = (payload: GenerationPayload): string => {
+  const sections = buildSections(payload);
+  const {
+    brand,
+    primaryCta,
+    services,
+    ordering,
+    advanced,
+    shortDescription,
+    description,
+    fullStory,
+    founderName,
+    yearFounded,
+    menu,
+    signatureDishes,
+    menuSourceText,
+    tone,
+    style,
+    onlineOrdering,
+    reservations,
+  } = payload;
+
+  return `Create a structured content plan for a premium restaurant website.
+
+Return valid JSON only with these optional keys:
+- heroSupport: string
+- heroHighlights: string[]
+- storyHeading: string
+- storyBody: string
+- storyFacts: string[]
+- menuHeading: string
+- menuIntro: string
+- menuItemDescriptions: [{ "name": string, "description": string }]
+- experienceHeading: string
+- experienceBody: string
+- reserveHeading: string
+- reserveBody: string
+- orderHeading: string
+- orderBody: string
+- visitHeading: string
+- visitBody: string
+- footerTagline: string
+
+Business details:
+- Name: ${sections.name}
+- Cuisine: ${sections.cuisineType}
+- Price range: ${sections.priceRange}
+- Address: ${sections.address}, ${sections.city}
+- Phone: ${sections.phone}
+- Email: ${sections.email}
+- Summary: ${brand?.summary || shortDescription || description || sections.summary}
+${fullStory ? `- Story: ${fullStory}` : ''}
+${founderName ? `- Founder: ${founderName}${yearFounded ? ` (${yearFounded})` : ''}` : ''}
+${brand?.atmosphere ? `- Atmosphere: ${brand.atmosphere}` : ''}
+${brand?.audience ? `- Audience: ${brand.audience}` : ''}
+${advanced?.neighborhood ? `- Neighborhood: ${advanced.neighborhood}` : payload.neighborhood ? `- Neighborhood: ${payload.neighborhood}` : ''}
+${advanced?.parking ? `- Parking: ${advanced.parking}` : payload.parking ? `- Parking: ${payload.parking}` : ''}
+${primaryCta ? `- Primary CTA: ${primaryCta}` : ''}
+
+Services:
+- Dine-in: ${Boolean(payload.dineIn ?? services?.dineIn) ? 'yes' : 'no'}
+- Takeout: ${Boolean(payload.takeout ?? services?.takeout) ? 'yes' : 'no'}
+- Delivery: ${Boolean(payload.delivery ?? services?.delivery) ? 'yes' : 'no'}
+- Catering: ${Boolean(services?.catering || payload.cateringAvailable) ? 'yes' : 'no'}
+- Private dining: ${Boolean(services?.privateDining) ? 'yes' : 'no'}
+
+Reservations:
+- ${reservations?.acceptReservations ? `${reservations.platforms?.join(', ') || 'enabled'} (${reservations.url || 'URL not provided'})` : payload.reservations?.acceptReservations ? `${payload.reservations.platforms?.join(', ') || 'enabled'} (${payload.reservations.url || 'URL not provided'})` : 'not enabled'}
+
+Ordering:
+- ${onlineOrdering?.acceptOrders ? `${onlineOrdering.platforms?.join(', ') || 'enabled'} (${onlineOrdering.customURL || 'URL not provided'})` : ordering?.enabled ? `${ordering.provider || 'enabled'} (${ordering.url || 'URL not provided'})` : 'not enabled'}
+
+Menu items:
+${(menu || [])
+  .map((item) => `- ${item.name}: ${item.description || 'No description'} (${formatMenuPrice(item.displayPrice ?? item.price) || 'No price'}) [${item.category || 'Featured'}]`)
+  .join('\n')}
+${signatureDishes?.length ? `Signature dishes: ${signatureDishes.join(', ')}` : ''}
+${menuSourceText ? `Raw pasted menu text:\n${menuSourceText}` : ''}
+
+Rules:
+- Keep every line restaurant-specific, polished, and believable.
+- Do not talk about websites, layouts, sections, landing pages, cards, UX, or design strategy.
+- Do not invent facts, menu items, addresses, phone numbers, hours, reservation platforms, reviews, or awards.
+- Menu description rewrites must stay grounded in the provided item name and source description. Do not add unsupported ingredients or claims.
+- Prefer fewer, stronger ideas over filler.
+- Hero support should be one short sentence.
+- Headings should be concise and brand-forward.
+- Avoid generic headings like "Our Story", "Our Menu", "Reservations", "Order Online", or "Visit Us".
+- Avoid generic phrases like "indulge in", "unforgettable", "crafted with love", "experience the", or "join us for".
+- If a field would be weak or repetitive, omit it instead of padding it.
+- Make the language feel like a real hospitality brand, not AI marketing copy.
+
+Art direction:
+- Style: ${style || 'Modern'}
+- Tone: ${tone || 'Warm and welcoming'}
+- Section sequence target: ${sections.sectionOrder.join(' -> ')}`;
+};
+
+export const renderPremiumRestaurantHtml = (payload: GenerationPayload): string => buildFallbackHtml(payload);
 
 export const buildGenerationPrompt = (payload: GenerationPayload): string => {
   const sections = buildSections(payload);
@@ -1896,13 +2593,16 @@ Preserve the rest of the site, including layout, colors, spacing, fonts, and all
 Return the full updated HTML document only.
 
 Rules:
-- Do not redesign the whole site.
+- Do not redesign the whole site unless the user explicitly asks.
 - Do not remove working sections unless the user asked.
 - If the request references an uploaded image, use it directly where requested.
 - Keep internal navigation working with on-page anchors.
 - Never use relative page routes, root paths, or .html files for navigation.
 - Keep text readable against every background.
-- Preserve the existing theme direction and layout character unless the user explicitly asks to redesign them.
+- Preserve the existing theme direction, section hierarchy, and CTA logic unless the user explicitly asks to redesign them.
+- Keep the page feeling like a premium restaurant brand website, not a generic landing page.
+- Avoid filler copy, duplicate sections, weak stacked text blocks, or repeating the same card pattern everywhere.
+- Do not invent factual details, testimonials, awards, menu items, addresses, or reservation providers.
 
 User request:
 ${customInstruction}
@@ -1965,7 +2665,7 @@ Non-negotiable rules:
 - Return only raw HTML. No markdown.
 - Use the user's facts exactly where provided.
 - Do not invent menu items, addresses, phone numbers, hours, reservation platforms, or awards.
-- Use only the provided menu items.
+- Use only the provided menu items or the raw pasted menu text if supplied.
 - Use only the provided image asset URLs when adding images.
 - Do not invent, fetch, or hallucinate image URLs.
 - Use semantic HTML.
@@ -1975,6 +2675,13 @@ Non-negotiable rules:
 - Never use /about, /menu, index.html, or full-site URLs for navigation.
 - The site must be mobile responsive.
 - Keep text readable against every background.
+- Use one elegant heading font and one clean body font only.
+- Use a restrained palette and a clear CTA hierarchy.
+- Use proper heading order, visible focus states, and labeled form fields where forms exist.
+- Do not create fake reviews, fake testimonials, fake awards, or filler social proof.
+- Do not create duplicate sections or repeat the same idea in multiple sections.
+- Prefer 5 to 7 strong sections total, including hero and footer.
+- Do not include duplicate Tailwind imports, legacy Tailwind stylesheet links, or duplicate Synthr safety assets.
 
 Art direction:
 - Style: ${style || 'Modern'}
@@ -1984,20 +2691,23 @@ Art direction:
 - Menu layout: ${design.menu.variant}
 - Navigation pattern: ${design.layout.navPattern}
 - Image treatment: ${design.layout.imageTreatment}
-- Section sequence target: ${design.layout.sectionOrder.join(' -> ')}
-- Create a visually striking hero with premium typography and better image composition.
-- Use cleaner, more editorial section layouts with stronger hierarchy and spacing.
-- Use less repetitive card-grid structure and more intentional mixed-density composition.
-- Let the site feel like a high-end restaurant website, not a generic SaaS template.
-- Use layered surfaces, soft shadows, subtle dividers, and refined CTA hierarchy.
-- Use asymmetric or split layouts where appropriate.
-- Include at least one large image-led section that feels premium.
+- Section sequence target: ${sections.sectionOrder.join(' -> ')}
+- The page flow should feel intentional: brand + atmosphere -> menu appeal -> reservation or ordering -> visit details.
+- Build a visually striking hero with the restaurant name, one short supporting line, one clear primary CTA, and at most one secondary CTA.
+- Use cleaner, more editorial section layouts with stronger hierarchy, whitespace, and image composition.
+- Avoid plain stacked containers, repetitive card grids, and generic text-then-image patterns.
+- Avoid giant centered white cards, full-width filler bands, and disconnected utility sections.
+- The about/story section should feel atmospheric and editorial, not like a paragraph dump.
+- The menu must feel designed, scan-friendly, and appetizing even if there are only a few items.
+- Reservations should feel serious and polished. If reservations are enabled, build a dedicated reservation section with clear inputs or booking details and one strong submit path.
+- Ordering should only appear if relevant, and it should feel integrated into the brand rather than like a leftover button block.
+- Combine hours, location, and contact into one refined visit section instead of scattering them.
+- Include at least one large image-led moment that feels premium.
 - Use the provided image assets intentionally: one strong hero image and a few supporting images with varied aspect ratios.
-- Give the menu a more designed presentation with clear pricing and spacing.
-- Desktop should feel polished and expansive, while mobile should collapse cleanly.
+- Match image role to section role. Avoid random cocktail shots in about/story unless the venue is explicitly bar-led.
+- Desktop should feel polished and expansive, while mobile should collapse cleanly with intentional spacing and tap targets.
 - Use tasteful microinteractions only if they can be expressed in simple CSS and do not harm readability.
-- Keep copy short, specific, and restaurant-facing, not startup-marketing language.
-- Do not create duplicate sections.
+- Keep copy short, specific, and rooted in hospitality language, not startup marketing language.
 
 Visual direction:
 ${buildVisualDirection(payload)}`;
@@ -2007,39 +2717,49 @@ export const finalizeGeneratedHtml = (payload: GenerationPayload, rawHtml: strin
   const hasEditContext = Boolean(payload.customInstruction && payload.existingHtml);
   const sections = buildSections(payload);
 
-  let cleanHtml = rawHtml || '<html><body>Error generating preview.</body></html>';
-  if (cleanHtml.includes('```html')) cleanHtml = cleanHtml.replace(/```html\n?/g, '').replace(/```\n?/g, '');
-  if (cleanHtml.includes('```')) cleanHtml = cleanHtml.replace(/```[a-z]*\n?/g, '').replace(/```\n?/g, '');
-  cleanHtml = ensureHtmlDocument(cleanHtml.trim());
+  const prepareHtml = (html: string): string => {
+    let nextHtml = html || '<html><body>Error generating preview.</body></html>';
+    if (nextHtml.includes('```html')) nextHtml = nextHtml.replace(/```html\n?/g, '').replace(/```\n?/g, '');
+    if (nextHtml.includes('```')) nextHtml = nextHtml.replace(/```[a-z]*\n?/g, '').replace(/```\n?/g, '');
+    nextHtml = ensureHtmlDocument(nextHtml.trim());
+    nextHtml = stripManagedAssets(nextHtml);
+    nextHtml = ensureTailwindCdn(nextHtml);
+    nextHtml = ensureSeoMeta(nextHtml, payload);
+    nextHtml = ensureDesignSafetyStyles(nextHtml, payload.style, payload.cuisineType, payload.tone);
+    nextHtml = normalizeOnPageLinks(nextHtml);
+    nextHtml = ensureRequiredAnchorTargets(nextHtml);
+    nextHtml = ensureSmoothScrollScript(nextHtml);
+    nextHtml = injectFallbackGallery(nextHtml, sections.imageAssets);
+    nextHtml = applyHeroBackground(nextHtml, payload.assistantImage, payload.customInstruction);
+    return nextHtml;
+  };
 
-  cleanHtml = ensureTailwindCdn(cleanHtml);
-  cleanHtml = ensureSeoMeta(cleanHtml, payload);
-  cleanHtml = ensureDesignSafetyStyles(cleanHtml, payload.style, payload.cuisineType, payload.tone);
-  cleanHtml = normalizeOnPageLinks(cleanHtml);
-  cleanHtml = ensureRequiredAnchorTargets(cleanHtml);
-  cleanHtml = ensureSmoothScrollScript(cleanHtml);
-  cleanHtml = injectFallbackGallery(cleanHtml, sections.imageAssets);
-  cleanHtml = applyHeroBackground(cleanHtml, payload.assistantImage, payload.customInstruction);
-
-  const issues = collectHtmlIssues(cleanHtml);
-  const fatalIssues = getFatalIssues(issues);
+  const preparedModelHtml = prepareHtml(rawHtml);
+  const modelIssues = collectHtmlIssues(preparedModelHtml);
+  const fatalIssues = getFatalIssues(modelIssues);
+  const qualityIssueCount = modelIssues.filter((issue) => ['generic-copy', 'duplicate-copy', 'too-many-sections', 'weak-cta'].includes(issue)).length;
+  let cleanHtml = preparedModelHtml;
   let source: GenerationMeta['source'] = 'model';
 
-  if (fatalIssues.length > 0) {
+  if (fatalIssues.length > 0 || qualityIssueCount >= 2) {
     if (hasEditContext && typeof payload.existingHtml === 'string' && payload.existingHtml.length > 0) {
-      cleanHtml = payload.existingHtml;
+      cleanHtml = prepareHtml(payload.existingHtml);
       source = 'existing';
     } else {
-      cleanHtml = buildFallbackHtml(payload);
+      cleanHtml = prepareHtml(renderPremiumRestaurantHtml(payload));
       source = 'fallback';
     }
   }
+
+  const finalIssues = collectHtmlIssues(cleanHtml);
 
   return {
     html: cleanHtml,
     meta: {
       source,
-      validationIssues: issues,
+      validationIssues: finalIssues,
+      modelValidationIssues: modelIssues,
+      finalHtmlValidationIssues: finalIssues,
     },
   };
 };

@@ -135,7 +135,7 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
 
     if (generationMeta?.source === 'model') {
       return {
-        tone: 'bg-emerald-500/10 text-emerald-100 border-emerald-500/20',
+        tone: 'bg-emerald-500/10 text-slate-950 border-emerald-500/20',
         label: 'Preview ready',
         description: 'You are viewing the latest generated version.',
       };
@@ -208,7 +208,7 @@ export const Preview: React.FC<{ details: BusinessDetails | null }> = ({ details
 
     const updatePromise = effectiveInstruction
       ? performGeneration(effectiveInstruction, imageData)
-      : Promise.resolve();
+      : Promise.resolve({ ok: true, meta: generationMeta });
 
     try {
       const [assistantResult, updateResult] = await Promise.allSettled([assistantPromise, updatePromise]);
