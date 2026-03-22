@@ -739,12 +739,20 @@ const getThemePalette = (cuisineType?: string, style?: string, tone?: string, va
 };
 
 const ensureTailwindCdn = (html: string): string => {
-  if (/cdn\.tailwindcss\.com/i.test(html)) return html;
-  const cdnTag = '<script src="https://cdn.tailwindcss.com"></script>';
-  if (/<head[^>]*>/i.test(html)) {
-    return html.replace(/<head[^>]*>/i, (match) => `${match}\n  ${cdnTag}`);
+  let next = html.replace(
+    /<link[^>]+href=["']https:\/\/cdn\.tailwindcss\.com["'][^>]*>/gi,
+    ''
+  );
+
+  if (/<script[^>]+src=["']https:\/\/cdn\.tailwindcss\.com["'][^>]*><\/script>/i.test(next)) {
+    return next;
   }
-  return html.replace(/<html[^>]*>/i, (match) => `${match}\n<head>\n  ${cdnTag}\n</head>`);
+
+  const cdnTag = '<script src="https://cdn.tailwindcss.com"></script>';
+  if (/<head[^>]*>/i.test(next)) {
+    return next.replace(/<head[^>]*>/i, (match) => `${match}\n  ${cdnTag}`);
+  }
+  return next.replace(/<html[^>]*>/i, (match) => `${match}\n<head>\n  ${cdnTag}\n</head>`);
 };
 
 const ensureSeoMeta = (html: string, payload: GenerationPayload): string => {
@@ -1821,6 +1829,9 @@ const collectHtmlIssues = (html: string): string[] => {
   const issues: string[] = [];
   if (html.length < 700) issues.push('too-short');
   if (!/<body[^>]*>/i.test(html)) issues.push('missing-body');
+  if (!/<script[^>]+src=["']https:\/\/cdn\.tailwindcss\.com["'][^>]*><\/script>/i.test(html)) {
+    issues.push('missing-tailwind-script');
+  }
   if (!/<nav[^>]*>/i.test(html) && !/<header[^>]*>/i.test(html)) issues.push('missing-navigation');
   if (!/<section[^>]*>/i.test(html)) issues.push('missing-sections');
   if (!/id=["']home["']/i.test(html)) issues.push('missing-home');
